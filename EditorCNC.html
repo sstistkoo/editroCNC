@@ -32,7 +32,9 @@
             display: flex;
             flex-direction: column;
             background: #fff;
-            height: 50vh; /* Přidáno - nastavení výšky na 50% viewportu */
+            position: relative;
+            overflow: hidden;
+            min-height: 0; /* Důležité pro správné scrollování */
         }
 
         .canvas-container {
@@ -74,13 +76,12 @@
             }
 
             .editor-container {
-                height: 55vh;
+                height: 45vh; /* Upraveno pro lepší zobrazení */
             }
 
             .toolbar {
-                padding: 8px;
-                background: #f5f5f5;
-                border-bottom: 1px solid #ddd;
+                padding: 5px;
+                gap: 5px;
             }
 
             .toolbar button {
@@ -106,10 +107,20 @@
             }
 
             #editor {
-                font-size: 16px;
-                line-height: 1.6;
-                padding: 12px;
+                font-size: 16px; /* Větší písmo pro mobilní zařízení */
+                line-height: 1.4;
+                padding: 8px;
                 -webkit-tap-highlight-color: rgba(0,0,0,0);
+            }
+
+            /* Vylepšení scrollování pro touch zařízení */
+            .editor-container::-webkit-scrollbar {
+                width: 8px;
+            }
+
+            .editor-container::-webkit-scrollbar-thumb {
+                background: rgba(0,0,0,0.2);
+                border-radius: 4px;
             }
         }
 
@@ -213,6 +224,13 @@
             );
             background-size: 100% 100%;
             line-height: 1.5em;
+            -webkit-overflow-scrolling: touch; /* Přidáno pro iOS smooth scroll */
+            overflow-y: auto; /* Přidáno - povolit vertikální scroll */
+            position: absolute; /* Přidáno */
+            top: 0; /* Přidáno */
+            left: 0; /* Přidáno */
+            right: 0; /* Přidáno */
+            bottom: 0; /* Přidáno */
         }
 
         /* Přidáno - styl pro zvýrazněný řádek */
@@ -404,6 +422,43 @@
                 justify-content: center;
             }
         }
+
+        .file-input-container {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+        }
+
+        .file-input-container input[type="file"] {
+            font-size: 100px;
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .file-input-button {
+            padding: 8px 15px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: inline-block;
+        }
+
+        .file-name {
+            margin-left: 10px;
+            color: #666;
+        }
+
+        .editor-wrapper {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            min-height: 0; /* Důležité pro správné scrollování */
+        }
     </style>
 </head>
 <body>
@@ -435,12 +490,17 @@
 
         <div class="editor-container">
             <div class="toolbar">
-                <input type="file" id="actualFileInput" accept=".mpf,.spf">
+                <div class="file-input-container">
+                    <button class="file-input-button">Vybrat soubor</button>
+                    <input type="file" id="actualFileInput" accept=".mpf,.spf">
+                </div>
                 <span class="file-name" id="fileName">Žádný soubor nevybrán</span>
                 <button onclick="saveFile()">Uložit</button>
                 <button onclick="window.simulator.resetView()">Reset pohledu</button>
             </div>
-            <textarea id="editor" spellcheck="false" placeholder="Vložte váš CNC program zde..."></textarea>
+            <div class="editor-wrapper">
+                <textarea id="editor" spellcheck="false" placeholder="Vložte váš CNC program zde..."></textarea>
+            </div>
         </div>
     </div>
 
@@ -1444,12 +1504,16 @@
 
             // Optimalizované vykreslování dráhy
             drawPath(movements) {
+                // Přidat kontrolu na undefined/null movements
+                if (!movements || !Array.isArray(movements) || movements.length === 0) {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.drawAxes();
+                    return;
+                }
+
                 const now = Date.now();
                 if (now - this.lastUpdate < this.updateThreshold) return;
                 this.lastUpdate = now;
-
-                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                this.drawAxes();
 
                 let batchRapid = [];
                 let batchNormal = [];
@@ -1853,7 +1917,14 @@
             // Přidat metodu pro odstranění zvýraznění
             clearHighlight() {
                 this.highlightedPoint = null;
-                this.drawPath(this.lastMovements);
+                // Přidat kontrolu na existenci this.lastMovements
+                if (this.lastMovements) {
+                    this.drawPath(this.lastMovements);
+                } else {
+                    // Pokud nemáme lastMovements, jen překreslit osy
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.drawAxes();
+                }
             }
 
             // Přidat do třídy Simulator novou metodu pro nalezení řádku podle bodu
@@ -2023,6 +2094,30 @@
                 this.stop();
             }
 
+            drawMovements(upToIndex) {
+                // Nejprve vyčistit canvas
+                this.simulator.ctx.clearRect(0, 0, this.simulator.canvas.width, this.simulator.canvas.height);
+
+                // Vykreslit mřížku a osy
+                this.simulator.drawAxes();
+
+                // Zobrazit pouze pohyby do aktuálního indexu
+                const currentMovements = this.movements.slice(0, upToIndex + 1);
+
+                // Aktualizovat aktivní bod
+                if (upToIndex >= 0 && upToIndex < this.movements.length) {
+                    const currentMove = this.movements[upToIndex];
+                    posXElement.textContent = currentMove.toX.toFixed(3);
+                    posZElement.textContent = currentMove.toZ.toFixed(3);
+
+                    // Zvýraznit aktuální koncový bod
+                    this.simulator.highlightPoint(currentMove.toX, currentMove.toZ);
+                }
+
+                // Vykreslit všechny pohyby do aktuálního bodu
+                this.simulator.drawPath(currentMovements);
+            }
+
             playNext() {
                 if (!this.isPlaying || this.currentIndex >= this.movements.length) {
                     this.stop();
@@ -2032,6 +2127,8 @@
                 // Vykreslit aktuální pohyb
                 this.drawMovements(this.currentIndex);
                 this.updateCurrentLine();
+
+                // Zvýšit index až po vykreslení
                 this.currentIndex++;
 
                 // Naplánovat další pohyb
@@ -2070,11 +2167,6 @@
                     clearTimeout(this.playTimer);
                     this.playNext();
                 }
-            }
-
-            drawMovements(upToIndex) {
-                const currentMovements = this.movements.slice(0, upToIndex + 1);
-                this.simulator.drawPath(currentMovements);
             }
 
             updateCurrentLine() {
@@ -2160,9 +2252,11 @@
         // Event listener pro kliknutí na řádek v editoru
         editor.addEventListener('click', function(e) {
             const cursorPosition = editor.selectionStart;
+            const lines = editor.value.split('\n');
+            if (lines.length === 0) return;  // Přidat kontrolu prázdného editoru
+
             const textBeforeCursor = editor.value.substring(0, cursorPosition);
             const clickedLine = textBeforeCursor.split('\n').length - 1;
-            const lines = editor.value.split('\n');
             const cleanedLines = lines.map(line => line.replace(/^→\s*/, ''));
 
             // Sledování G90/G91 módu a aktuální pozice
@@ -2221,6 +2315,14 @@
                 }
             }
         });
+
+        // Přidat event listener pro opakované překreslení při změně velikosti okna
+        window.addEventListener('resize', debounce(() => {
+            if (window.simulator) {
+                window.simulator.setupCanvas();
+                window.simulator.simulate();
+            }
+        }, 250));
     </script>
 </body>
 </html>
