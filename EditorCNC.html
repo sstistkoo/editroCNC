@@ -2107,28 +2107,44 @@
 
                 this.parser.parseProgram(program).then(movements => {
                     if (movements && Array.isArray(movements)) {
-                        const bounds = this.calculateBounds(movements);
-                        if (bounds) {
-                            // Najít skutečné hranice programu
-                            const bottomLeft = { x: bounds.minX, z: bounds.minZ };
-                            const topRight = { x: bounds.maxX, z: bounds.maxZ };
+                        // Filtrovat pouze pracovní pohyby (G1)
+                        const workMoves = movements.filter(move => !move.rapid);
 
-                            // Přidat malý okraj pro lepší vzhled (2%)
-                            const margin = 0.02;
-                            const width = (topRight.z - bottomLeft.z) * (1 + margin);
-                            const height = (topRight.x - bottomLeft.x) * (1 + margin);
+                        if (workMoves.length > 0) {
+                            // Vypočítat hranice pouze pro pracovní pohyby
+                            const bounds = {
+                                minX: Math.min(...workMoves.map(m => Math.min(m.fromX, m.toX))),
+                                maxX: Math.max(...workMoves.map(m => Math.max(m.fromX, m.toX))),
+                                minZ: Math.min(...workMoves.map(m => Math.min(m.fromZ, m.toZ))),
+                                maxZ: Math.max(...workMoves.map(m => Math.max(m.fromZ, m.toZ)))
+                            };
 
-                            // Vypočítat měřítko pro obě osy
+                            // Přidat okraj 10% pro lepší zobrazení
+                            const margin = {
+                                x: (bounds.maxX - bounds.minX) * 0.1,
+                                z: (bounds.maxZ - bounds.minZ) * 0.1
+                            };
+
+                            bounds.minX -= margin.x;
+                            bounds.maxX += margin.x;
+                            bounds.minZ -= margin.z;
+                            bounds.maxZ += margin.z;
+
+                            // Vypočítat měřítko pro přizpůsobení pohledu
+                            const width = bounds.maxZ - bounds.minZ;
+                            const height = bounds.maxX - bounds.minX;
+
                             const scaleX = this.canvas.width / width;
                             const scaleY = this.canvas.height / height;
+
                             // Použít menší měřítko pro zachování poměru stran
                             this.baseScale = Math.min(scaleX, scaleY);
                             this.zoomFactor = 1;
                             this.scale = this.baseScale;
 
-                            // Vypočítat pozici pro vycentrování
-                            const centerX = (bottomLeft.x + topRight.x) / 2;
-                            const centerZ = (bottomLeft.z + topRight.z) / 2;
+                            // Vypočítat střed pro centrování
+                            const centerX = (bounds.minX + bounds.maxX) / 2;
+                            const centerZ = (bounds.minZ + bounds.maxZ) / 2;
 
                             // Nastavit pozici pohledu
                             this.centerX = this.canvas.width / 2 - centerX * this.scale;
@@ -2137,6 +2153,12 @@
                             // Překreslit
                             this.gridCache = this.createGridCache();
                             this.simulate(true);
+                        } else {
+                            // Pokud nejsou pracovní pohyby, zobrazit celý program
+                            const bounds = this.calculateBounds(movements);
+                            if (bounds) {
+                                // ... původní kód pro všechny pohyby ...
+                            }
                         }
                     }
                 }).catch(error => {
@@ -2754,4 +2776,3 @@
     </script>
 </body>
 </html>
-
