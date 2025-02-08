@@ -672,6 +672,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            flex: 2; /* Zvětšit na dvojnásobek oproti ostatním tlačítkům */
         }
 
         .player-controls {
@@ -684,6 +685,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            width: 120px; /* Zvětšit šířku tlačítek */
             min-height: 80px;
             font-size: 32px;
             flex: 1;
@@ -692,18 +694,18 @@
             border-radius: 8px;
             color: white;
             padding: 0;
-            width: 80px;
         }
 
         .player-info {
             display: flex;
             align-items: center;
             gap: 10px;
-            font-size: 16px;
+            font-size: 18px; /* Zvětšit písmo */
+            min-width: 150px; /* Minimální šířka pro počítadlo */
         }
 
         #speedSlider {
-            width: 120px;
+            width: 200px; /* Zvětšit šířku slideru */
             height: 40px;
         }
 
@@ -716,6 +718,71 @@
             background: #f5f5f5;
             border-bottom: 1px solid #ddd;
             min-height: 50px;
+        }
+
+        .player-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 3; /* Zvětšit na trojnásobek */
+            flex-wrap: wrap; /* Povolit zalamování */
+            padding: 8px;
+        }
+
+        .player-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 18px;
+            min-width: 200px; /* Větší minimální šířka */
+            margin-top: 8px; /* Odsazení shora */
+            flex-direction: column; /* Informace pod sebe */
+            align-items: flex-start;
+        }
+
+        #speedSlider {
+            width: 250px; /* Větší šířka slideru */
+            height: 40px;
+        }
+
+        .program-list {
+            padding: 10px;
+            min-height: 60px; /* Větší minimální výška */
+        }
+
+        .program-list-item {
+            padding: 12px 16px; /* Větší padding */
+            font-size: 18px; /* Větší písmo */
+            margin: 4px;
+            min-width: 120px; /* Minimální šířka položky */
+        }
+
+        @media (max-width: 768px) {
+            .player-container {
+                padding: 12px;
+            }
+
+            .player-controls button {
+                width: 80px; /* Větší šířka tlačítek na mobilu */
+                min-height: 80px;
+            }
+
+            .player-info {
+                width: 100%; /* Na celou šířku na mobilu */
+                text-align: center;
+                padding: 8px;
+            }
+
+            #speedSlider {
+                width: 100%; /* Slider na celou šířku */
+                margin: 8px 0;
+            }
+
+            .program-list-item {
+                flex: 1 1 auto; /* Lepší přizpůsobení na mobilu */
+                text-align: center;
+                min-width: 150px; /* Větší minimální šířka na mobilu */
+            }
         }
     </style>
 </head>
@@ -1789,11 +1856,25 @@
                     this.gridCache = this.createGridCache();
                     this.simulate();
                 }
+
+                // Přidat průběžné překreslování během pohybu
+                if (this.lastMovements) {
+                    requestAnimationFrame(() => {
+                        this.drawPath(this.lastMovements);
+                    });
+                }
             }
 
             handleTouchEnd(event) {
                 this.isDragging = false;
                 this.lastTouchDistance = 0;
+
+                // Přidat vynucené překreslení po puštění
+                setTimeout(() => {
+                    if (this.lastMovements) {
+                        this.drawPath(this.lastMovements);
+                    }
+                }, 50);
             }
 
             setupCanvas() {
@@ -2722,6 +2803,7 @@
                                 if (content) {
                                     editor.value = content;
                                     await simulateProgram();
+                                    window.simulator.resetView(); // Přidat automatický reset pohledu
                                 }
                             };
                             programList.appendChild(item);
@@ -2735,6 +2817,7 @@
                                 editor.value = content;
                                 programList.firstChild?.classList.add('active');
                                 await simulateProgram();
+                                window.simulator.resetView(); // Přidat automatický reset pohledu
                             }
                         }
 
