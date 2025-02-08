@@ -501,7 +501,10 @@
                     });
                 }
 
-                return points;
+                return {
+                    points: points,
+                    center: centerPoint // Vrátit i střed oblouku
+                };
             }
 
             parseArcMovement(words, movement) {
@@ -632,7 +635,10 @@
                     });
                 }
 
-                return points;
+                return {
+                    points: points,
+                    center: centerPoint // Vrátit i střed oblouku
+                };
             }
 
             calculateArcAngle(start, end, center, isClockwise) {
@@ -668,7 +674,11 @@
                     fromZ: this.currentZ,
                     toX: this.currentX,
                     toZ: this.currentZ,
-                    rapid: this.rapidMode
+                    rapid: this.rapidMode,
+                    // Přidání vlastností pro středy a body oblouku
+                    center: null,
+                    arcPoints: null,
+                    isArc: false
                 };
 
                 let hasMove = false;
@@ -730,7 +740,23 @@
 
                 // Po zpracování všech souřadnic zpracovat oblouk
                 if (hasMove && (movement.type === 'G2' || movement.type === 'G3')) {
-                    movement.arcPoints = this.parseArcMovement(words, movement);
+                    const arcResult = this.parseArcMovement(words, movement);
+                    movement.arcPoints = arcResult.points;
+                    movement.center = arcResult.center; // Uložit střed do pohybu
+                }
+
+                // Přidat koncové body do paměti
+                if (hasMove) {
+                    // Pro oblouk přidat všechny body včetně koncového
+                    if (movement.arcPoints && movement.arcPoints.length > 0) {
+                        movement.points = [...movement.arcPoints];
+                    } else {
+                        // Pro přímý pohyb přidat koncový bod
+                        movement.points = [{
+                            x: movement.toX,
+                            z: movement.toZ
+                        }];
+                    }
                 }
 
                 if (hasMove) {
@@ -1237,8 +1263,19 @@
                 for (let move of movements) {
                     const from = this.worldToScreen(move.fromX, move.fromZ);
 
+                    // Přidat počáteční bod do detekce pro všechny pohyby kromě rychloposuvu
+                    if (!move.rapid) {
+                        this.points.push({
+                            screenX: from.x,
+                            screenY: from.y,
+                            x: move.fromX,
+                            z: move.fromZ,
+                            isStart: true // Označení počátečního bodu
+                        });
+                    }
+
                     if (move.isArc && move.arcPoints) {
-                        // Vykreslení oblouku
+                        // Vykreslit oblouk po jednotlivých bodech
                         this.ctx.beginPath();
                         this.ctx.moveTo(from.x, from.y);
 
@@ -1251,14 +1288,41 @@
                         this.ctx.lineWidth = 2;
                         this.ctx.stroke();
 
-                        // Uložit koncový bod pro detekci
-                        const lastPoint = move.arcPoints[move.arcPoints.length - 1];
+                        // Vykreslit střed oblouku
+                        if (move.center) {
+                            const center = this.worldToScreen(move.center.x, move.center.z);
+                            this.ctx.strokeStyle = '#00ff00';
+                            this.ctx.beginPath();
+                            this.ctx.moveTo(center.x - 5, center.y - 5);
+                            this.ctx.lineTo(center.x + 5, center.y + 5);
+                            this.ctx.moveTo(center.x + 5, center.y - 5);
+                            this.ctx.lineTo(center.x - 5, center.y + 5);
+                            this.ctx.stroke();
+
+                            // Přidat střed do bodů pro tooltip
+                            this.points.push({
+                                screenX: center.x,
+                                screenY: center.y,
+                                x: move.center.x,
+                                z: move.center.z,
+                                isCenter: true
+                            });
+                        }
+
+                        // Přidat pouze koncový bod do detekce
+                        const to = this.worldToScreen(move.toX, move.toZ);
                         this.points.push({
-                            screenX: this.worldToScreen(lastPoint.x, lastPoint.z).x,
-                            screenY: this.worldToScreen(lastPoint.x, lastPoint.z).y,
-                            x: lastPoint.x,
-                            z: lastPoint.z
+                            screenX: to.x,
+                            screenY: to.y,
+                            x: move.toX,
+                            z: move.toZ
                         });
+
+                        // Vykreslit body jako malé kroužky
+                        this.ctx.fillStyle = '#007bff';
+                        this.ctx.beginPath();
+                        this.ctx.arc(to.x, to.y, 3, 0, Math.PI * 2);
+                        this.ctx.fill();
                     } else {
                         // Původní vykreslení přímých pohybů
                         const to = this.worldToScreen(move.toX, move.toZ);
@@ -1268,12 +1332,19 @@
                             batchNormal.push({from, to});
                         }
 
+                        // Přidat koncový bod do detekce
                         this.points.push({
                             screenX: to.x,
                             screenY: to.y,
                             x: move.toX,
                             z: move.toZ
                         });
+
+                        // Vykreslit body
+                        this.ctx.fillStyle = move.rapid ? '#ff0000' : '#007bff';
+                        this.ctx.beginPath();
+                        this.ctx.arc(to.x, to.y, 3, 0, Math.PI * 2);
+                        this.ctx.fill();
                     }
                 }
 
