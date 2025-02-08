@@ -320,6 +320,90 @@
         #speedSlider {
             width: 100px;
         }
+
+        /* Přidat nové styly pro přehrávač nad editorem */
+        .controls-container {
+            padding: 10px;
+            background: #f5f5f5;
+            border-top: 1px solid #ddd;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .player-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex: 1;
+        }
+
+        .player-controls {
+            position: static;
+            transform: none;
+            background: none;
+            box-shadow: none;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin: 0;
+        }
+
+        .player-controls button {
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            border-radius: 20px;
+            border: 1px solid #ccc;
+            background: white;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .player-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        #speedSlider {
+            width: 100px;
+            margin: 0;
+        }
+
+        /* Mobilní optimalizace */
+        @media (max-width: 768px) {
+            .controls-container {
+                flex-direction: column;
+                padding: 5px;
+            }
+
+            .player-container {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .player-controls button {
+                width: 50px;
+                height: 50px;
+                font-size: 24px;
+            }
+
+            #speedSlider {
+                width: 80px;
+            }
+
+            .toolbar {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+        }
     </style>
 </head>
 <body>
@@ -331,14 +415,20 @@
                     Aktuální: X: <span id="posX">0.000</span> Z: <span id="posZ">0.000</span><br>
                     Vybraný: X: <span id="selectedPosX">-</span> Z: <span id="selectedPosZ">-</span>
                 </div>
+            </div>
+        </div>
+
+        <div class="controls-container">
+            <div class="player-container">
                 <div class="player-controls">
                     <button id="prevBtn" title="Krok zpět">⏪</button>
                     <button id="playBtn" title="Přehrát/Pozastavit">▶️</button>
                     <button id="nextBtn" title="Krok vpřed">⏩</button>
-                    <input type="range" id="speedSlider" min="1" max="100" value="50" title="Rychlost přehrávání">
                 </div>
-                <div class="playback-progress">
-                    Řádek: <span id="currentLine">0</span> / <span id="totalLines">0</span>
+                <div class="player-info">
+                    <span>Rychlost:</span>
+                    <input type="range" id="speedSlider" min="1" max="100" value="50" title="Rychlost přehrávání">
+                    <span>Řádek: <span id="currentLine">0</span>/<span id="totalLines">0</span></span>
                 </div>
             </div>
         </div>
@@ -348,7 +438,6 @@
                 <input type="file" id="actualFileInput" accept=".mpf,.spf">
                 <span class="file-name" id="fileName">Žádný soubor nevybrán</span>
                 <button onclick="saveFile()">Uložit</button>
-                <button onclick="simulateProgram()">Simulovat</button>
                 <button onclick="window.simulator.resetView()">Reset pohledu</button>
             </div>
             <textarea id="editor" spellcheck="false" placeholder="Vložte váš CNC program zde..."></textarea>
