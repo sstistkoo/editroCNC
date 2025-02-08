@@ -63,10 +63,15 @@
             position: absolute;
             top: 10px;
             right: 10px;
-            background: rgba(255,255,255,0.9);
-            padding: 5px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: monospace;
+            z-index: 1000;
+            pointer-events: none;
+            text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
         }
 
         /* Mobilní optimalizace */
@@ -100,8 +105,10 @@
             }
 
             .position-info {
-                font-size: 14px;
-                padding: 8px;
+                font-size: 16px;
+                padding: 10px 15px;
+                right: 5px;
+                top: 5px;
                 background: rgba(255, 255, 255, 0.95);
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
@@ -231,6 +238,14 @@
             left: 0; /* Přidáno */
             right: 0; /* Přidáno */
             bottom: 0; /* Přidáno */
+            -webkit-overflow-scrolling: touch;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            touch-action: pan-y;
+            user-select: text;
+            -webkit-user-select: text;
+            padding: 16px; /* Větší padding pro lepší dotykové ovládání */
+            font-size: 16px; /* Větší písmo pro mobily */
         }
 
         /* Přidáno - styl pro zvýrazněný řádek */
@@ -427,6 +442,9 @@
             position: relative;
             overflow: hidden;
             display: inline-block;
+            display: flex;
+            width: 100%;
+            margin-bottom: 8px;
         }
 
         .file-input-container input[type="file"] {
@@ -446,11 +464,35 @@
             border-radius: 4px;
             cursor: pointer;
             display: inline-block;
+            display: block;
+            width: 100%;
+            padding: 12px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            text-align: center;
+            margin: 4px;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .file-name {
             margin-left: 10px;
             color: #666;
+            margin-left: 10px;
+            color: #666;
+            background: white;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            margin: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: block;
+            width: 100%;
         }
 
         .editor-wrapper {
@@ -491,12 +533,14 @@
         <div class="editor-container">
             <div class="toolbar">
                 <div class="file-input-container">
-                    <button class="file-input-button">Vybrat soubor</button>
-                    <input type="file" id="actualFileInput" accept=".mpf,.spf">
+                    <label class="file-input-button">
+                        Vybrat soubor
+                        <input type="file" id="actualFileInput" accept=".mpf,.spf" style="display: none;">
+                    </label>
                 </div>
-                <span class="file-name" id="fileName">Žádný soubor nevybrán</span>
-                <button onclick="saveFile()">Uložit</button>
-                <button onclick="window.simulator.resetView()">Reset pohledu</button>
+                <div class="file-name" id="fileName">Žádný soubor nevybrán</div>
+                <button onclick="saveFile()" class="action-button">Uložit</button>
+                <button onclick="window.simulator.resetView()" class="action-button">Reset pohledu</button>
             </div>
             <div class="editor-wrapper">
                 <textarea id="editor" spellcheck="false" placeholder="Vložte váš CNC program zde..."></textarea>
