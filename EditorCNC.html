@@ -629,10 +629,7 @@
                     </label>
                 </div>
                 <div class="program-list" id="programList"></div>
-                <div class="file-name" id="fileName">Žádný soubor nevybrán</div>
-                <button onclick="saveFile()" class="action-button">Uložit</button>
-                <button onclick="window.simulator.resetView()" class="action-button">Reset pohledu</button>
-                <button onclick="selectProgramDirectory()">Vybrat složku s podprogramy</button>
+                <button onclick="window.simulator.resetView()" class="action-button">Aktualizovaný pohled</button>
                 <button onclick="showParameters()" class="action-button">Parametry</button>
             </div>
             <div class="editor-wrapper">
@@ -2448,35 +2445,30 @@
             }
 
             drawMovements(upToIndex) {
-                // Nejprve vyčistit canvas a všechna zvýraznění
-                this.simulator.clearAllHighlights();
+                // Vyčistit canvas
                 this.simulator.ctx.clearRect(0, 0, this.simulator.canvas.width, this.simulator.canvas.height);
+
+                // Vykreslit osy a mřížku
                 this.simulator.drawAxes();
 
-                // Zobrazit pouze pohyby do aktuálního indexu
+                // Připravit všechny pohyby až do aktuálního indexu
                 const currentMovements = this.movements.slice(0, upToIndex + 1);
 
-                // Aktualizovat aktivní bod a souřadnice
-                if (upToIndex >= 0 && upToIndex < this.movements.length) {
-                    const currentMove = this.movements[upToIndex];
+                if (currentMovements.length > 0) {
+                    // Vykreslit všechny předchozí dráhy
+                    this.simulator.drawPath(currentMovements);
+
+                    // Získat aktuální pohyb pro zvýraznění
+                    const currentMove = currentMovements[currentMovements.length - 1];
 
                     // Aktualizovat zobrazené souřadnice
                     posXElement.textContent = this.simulator.formatNumber(currentMove.toX);
                     posZElement.textContent = this.simulator.formatNumber(currentMove.toZ);
-
-                    // Aktualizovat vybrané souřadnice
                     selectedPosXElement.textContent = this.simulator.formatNumber(currentMove.toX);
                     selectedPosZElement.textContent = this.simulator.formatNumber(currentMove.toZ);
 
-                    // Vykreslit všechny pohyby do aktuálního bodu
-                    this.simulator.drawPath(currentMovements);
-
-                    // Vyčistit předchozí zvýraznění a zvýraznit nový bod
-                    this.simulator.highlightedPoint = null;
+                    // Zvýraznit aktuální bod
                     this.simulator.highlightPoint(currentMove.toX, currentMove.toZ);
-                } else {
-                    // Vykreslit cestu bez zvýraznění
-                    this.simulator.drawPath(currentMovements);
                 }
             }
 
@@ -2552,7 +2544,9 @@
 
                 const item = document.createElement('div');
                 item.className = 'program-list-item';
-                item.textContent = file.name;
+                // Remove file extension from display name
+                const displayName = file.name.replace(/\.(SPF|MPF)$/i, '');
+                item.textContent = displayName;
                 item.onclick = async () => {
                     // Označit aktivní program
                     programList.querySelectorAll('.program-list-item')
@@ -2563,7 +2557,6 @@
                     const content = window.simulator.parser.getProgram(file.name);
                     if (content) {
                         editor.value = content;
-                        fileNameDisplay.textContent = file.name;
                         await simulateProgram();
                     }
                 };
@@ -2576,7 +2569,6 @@
                 const content = await window.simulator.parser.loadProgram(firstFile);
                 if (content) {
                     editor.value = content;
-                    fileNameDisplay.textContent = firstFile.name;
                     programList.firstChild?.classList.add('active');
                     await simulateProgram();
                 }
@@ -2762,3 +2754,4 @@
     </script>
 </body>
 </html>
+
