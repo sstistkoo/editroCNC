@@ -63,15 +63,16 @@
             position: absolute;
             top: 10px;
             right: 10px;
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0, 0, 0, 0.8);
             color: white;
-            padding: 8px 12px;
+            padding: 12px 16px;
             border-radius: 6px;
-            font-size: 14px;
+            font-size: 24px; /* Zvětšeno z 14px */
             font-family: monospace;
             z-index: 1000;
             pointer-events: none;
             text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
+            min-width: 220px; /* Přidáno pro lepší čitelnost */
         }
 
         /* Mobilní optimalizace */
@@ -105,12 +106,11 @@
             }
 
             .position-info {
-                font-size: 16px;
-                padding: 10px 15px;
+                font-size: 20px; /* Zvětšeno pro mobily */
+                padding: 12px 16px;
                 right: 5px;
                 top: 5px;
-                background: rgba(255, 255, 255, 0.95);
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                background: rgba(0, 0, 0, 0.9);
             }
 
             #editor {
@@ -1911,7 +1911,7 @@
                 ctx.strokeStyle = '#ddd';
                 ctx.lineWidth = 0.5;
                 ctx.fillStyle = '#666';
-                ctx.font = '11px Arial';
+                ctx.font = '22px Arial'; /* Zvětšeno z 11px */
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'middle';
 
@@ -1948,7 +1948,7 @@
                             ctx.stroke();
                             // Popisek pouze pro hlavní čáry
                             if (Math.abs(x) > 0.001) { // Vynechat nulu
-                                ctx.fillText(`Z${x}`, screenX + 4, this.canvas.height - 10);
+                                ctx.fillText(`Z${x}`, screenX + 8, this.canvas.height - 20);
                             }
                         });
                     } else {
@@ -1977,7 +1977,7 @@
                             ctx.stroke();
                             // Popisek pouze pro hlavní čáry
                             if (Math.abs(y) > 0.001) { // Vynechat nulu
-                                ctx.fillText(`X${y}`, 4, screenY); // Odstraněno znaménko mínus
+                                ctx.fillText(`X${y}`, 8, screenY + 8);
                             }
                         });
                     } else {
@@ -2508,6 +2508,9 @@
                 const mouseX = event.clientX - rect.left;
                 const mouseY = event.clientY - rect.top;
 
+                // Vymazat předchozí zvýraznění
+                this.clearHighlight();
+
                 // Najít bod pod myší s větší tolerancí
                 const hitPoint = this.points.find(point => {
                     const dx = mouseX - point.screenX;
@@ -2516,7 +2519,7 @@
                 });
 
                 if (hitPoint) {
-                    const lineIndex = this.parser.findLineByPoint(hitPoint.x, hitPoint.z);
+                    const lineIndex = this.findLineByCoordinates(hitPoint.x, hitPoint.z);
                     if (lineIndex >= 0) {
                         this.highlightLineAndPoint(lineIndex, hitPoint);
                     }
@@ -2525,6 +2528,9 @@
 
             // Přidat novou metodu pro zvýraznění řádku a bodu
             highlightLineAndPoint(lineIndex, point) {
+                // Nejprve vyčistit předchozí zvýraznění
+                this.clearHighlight();
+
                 // Odstranit předchozí šipky
                 const lines = editor.value.split('\n').map(line => line.replace(/^→\s*/, ''));
 
@@ -2558,22 +2564,50 @@
                 }
             }
 
+            findLineByCoordinates(targetX, targetZ) {
+                // Projít všechny pohyby a najít ten, který končí na daných souřadnicích
+                let movements = [];
+                const program = editor.value;
+
+                // Resetovat parser pro správné hodnoty
+                this.parser.reset();
+
+                const lines = program.split('\n');
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line || line.startsWith(';')) continue;
+
+                    const coords = this.parser.parseCoordinates(line);
+                    if (coords.hasCoordinates) {
+                        if (Math.abs(coords.x - targetX) < 0.001 &&
+                            Math.abs(coords.z - targetZ) < 0.001) {
+                            return i; // Vrátit index řádku
+                        }
+                        // Aktualizovat pozici parseru
+                        this.parser.currentX = coords.x;
+                        this.parser.currentZ = coords.z;
+                    }
+                }
+                return -1;
+            }
+
             highlightLineAndPoint(lineIndex, point) {
+                // Nejprve vyčistit předchozí zvýraznění
+                this.clearHighlight();
+
                 // Odstranit předchozí šipky
-                const lines = editor.value.split('\n').map(line => line.replace(/^→\s*/, ''));
+                const lines = editor.value.split('\n');
+                const cleanLines = lines.map(line => line.replace(/^→\s*/, ''));
 
                 // Přidat šipku k vybranému řádku
-                lines[lineIndex] = '→ ' + lines[lineIndex];
-                editor.value = lines.join('\n');
+                cleanLines[lineIndex] = '→ ' + cleanLines[lineIndex];
+                editor.value = cleanLines.join('\n');
 
                 // Aktualizovat zobrazené souřadnice
                 selectedPosXElement.textContent = this.formatNumber(point.x);
                 selectedPosZElement.textContent = this.formatNumber(point.z);
 
-                // Vyčistit všechna předchozí zvýraznění
-                this.clearAllHighlights();
-
-                // Zvýraznit nový bod
+                // Zvýraznit bod
                 this.highlightPoint(point.x, point.z);
 
                 // Scrollovat k vybranému řádku
@@ -2867,8 +2901,8 @@
             }
         }
 
-        // Event listener pro kliknutí na řádek v editoru
-        editor.addEventListener('click', function(e) {
+        // Upravit event listener pro kliknutí na řádek v editoru
+        editor.addEventListener('click', async function(e) {
             const cursorPosition = editor.selectionStart;
             const lines = editor.value.split('\n');
             if (!lines.length) return;
@@ -2889,6 +2923,28 @@
                     x: coords.x,
                     z: coords.z
                 });
+
+                // Přehrát pohyby až po vybraný bod
+                if (window.simulator.player) {
+                    // Najít index pohybu odpovídající vybranému řádku
+                    const movements = await window.simulator.parser.parseProgram(editor.value);
+                    const targetPoint = { x: coords.x, z: coords.z };
+
+                    // Najít index posledního pohybu před nebo na vybraném řádku
+                    let moveIndex = movements.findIndex(move =>
+                        Math.abs(move.toX - targetPoint.x) < 0.001 &&
+                        Math.abs(move.toZ - targetPoint.z) < 0.001
+                    );
+
+                    if (moveIndex >= 0) {
+                        // Nastavit index v přehrávači
+                        window.simulator.player.currentIndex = moveIndex + 1;
+                        // Vykreslit všechny pohyby až po tento index
+                        window.simulator.player.drawMovements(moveIndex);
+                        // Aktualizovat počítadlo řádků
+                        window.simulator.player.updateCurrentLine();
+                    }
+                }
             }
         });
 
