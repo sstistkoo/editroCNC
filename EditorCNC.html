@@ -333,10 +333,25 @@
                 this.absoluteMode = true;
                 this.rapidMode = true; // Výchozí hodnota na rapid pro nájezd
                 this.isFirstMove = true; // Přidáme sledování prvního pohybu
+                this.lastArcCommand = null; // Přidáno - pamatovat si poslední G2/G3
                 debug('Parser resetován');
             }
 
             parseCoordinate(value, current) {
+                // Ošetření matematických výrazů se znakem =
+                if (value.startsWith('=')) {
+                    try {
+                        // Odstranit = a vyhodnotit výraz
+                        const expression = value.substring(1);
+                        const result = Function(`return ${expression}`)();
+                        if (isNaN(result)) return current;
+                        return Number(result.toFixed(3));
+                    } catch (e) {
+                        console.error('Chyba při vyhodnocení výrazu:', e);
+                        return current;
+                    }
+                }
+
                 const parsed = parseFloat(value);
                 if (isNaN(parsed)) return current;
 
@@ -678,18 +693,28 @@
                     // Přidání vlastností pro středy a body oblouku
                     center: null,
                     arcPoints: null,
-                    isArc: false
+                    isArc: false,
+                    type: this.lastArcCommand // Použít poslední G2/G3 pokud existuje
                 };
 
                 let hasMove = false;
+                let hasGCommand = false; // Sledovat, zda byl na řádku G příkaz
 
                 for (let word of words) {
                     if (!word) continue;
                     const command = word[0];
-                    const value = word.slice(1);
+                    let value = word.slice(1);
+
+                    // Upravit zpracování pro souřadnice obsahující =
+                    if (command === 'X' || command === 'Z') {
+                        if (value.includes('=')) {
+                            value = '=' + value.split('=')[1];  // Zachovat = pro matematický výraz
+                        }
+                    }
 
                     switch (command) {
                         case 'G':
+                            hasGCommand = true;
                             switch (value) {
                                 case '0':
                                     this.rapidMode = true;
@@ -711,12 +736,14 @@
                                     break;
                                 case '2':
                                     this.rapidMode = false;
+                                    this.lastArcCommand = 'G2';
                                     movement.type = 'G2'; // CW
                                     movement.isArc = true;
                                     console.log('✓ Nastaven oblouk ve směru hodin (G2)');
                                     break;
                                 case '3':
                                     this.rapidMode = false;
+                                    this.lastArcCommand = 'G3';
                                     movement.type = 'G3'; // CCW
                                     movement.isArc = true;
                                     console.log('✓ Nastaven oblouk proti směru hodin (G3)');
@@ -736,6 +763,12 @@
                             console.log(`➜ Z pozice: ${movement.toZ}`);
                             break;
                     }
+                }
+
+                // Pokud je CR parametr a není G příkaz, použít poslední G2/G3
+                if (!hasGCommand && words.some(w => w.startsWith('CR='))) {
+                    movement.isArc = true;
+                    console.log(`✓ Použit předchozí příkaz (${this.lastArcCommand})`);
                 }
 
                 // Po zpracování všech souřadnic zpracovat oblouk
