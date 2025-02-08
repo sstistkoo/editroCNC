@@ -593,6 +593,130 @@
         .action-button:hover {
             background: #0056b3;
         }
+
+        /* Upravené styly pro toolbar */
+        .toolbar {
+            display: flex;
+            flex-direction: row;
+            gap: 8px;
+            padding: 8px;
+            align-items: center;
+        }
+
+        .file-input-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 80px;
+            font-size: 24px;
+            flex: 1;
+            background: #007bff;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .action-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 80px;
+            font-size: 24px;
+            flex: 1;
+            background: #007bff;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .action-button:hover, .file-input-button:hover {
+            background: #0056b3;
+        }
+
+        /* Přidat styly pro touch zařízení */
+        @media (hover: none) {
+            .toolbar button, .file-input-button {
+                min-height: 80px;
+                font-size: 24px;
+                touch-action: manipulation;
+            }
+
+            .toolbar {
+                touch-action: none;
+                user-select: none;
+            }
+        }
+
+        /* Přidat styly pro ikony */
+        .button-icon {
+            font-size: 32px;
+            margin-bottom: 4px;
+        }
+
+        /* Upravené styly pro player controls */
+        .controls-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            gap: 8px;
+            background: none;
+            border: none;
+        }
+
+        .player-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .player-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .player-controls button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 80px;
+            font-size: 32px;
+            flex: 1;
+            background: #007bff;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            padding: 0;
+            width: 80px;
+        }
+
+        .player-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 16px;
+        }
+
+        #speedSlider {
+            width: 120px;
+            height: 40px;
+        }
+
+        .program-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            padding: 5px;
+            width: 100%;
+            background: #f5f5f5;
+            border-bottom: 1px solid #ddd;
+            min-height: 50px;
+        }
     </style>
 </head>
 <body>
@@ -606,32 +730,35 @@
                 </div>
             </div>
         </div>
-        <div class="controls-container">
+        <div class="toolbar">
+            <label class="file-input-button">
+                <span class="button-icon">📂</span>
+                <input type="file" id="actualFileInput" accept=".mpf,.spf" multiple style="display: none;">
+            </label>
+            <button onclick="window.simulator.resetView()" class="action-button">
+                <span class="button-icon">🔄</span>
+            </button>
+            <button onclick="showParameters()" class="action-button">
+                <span class="button-icon">R</span>
+            </button>
             <div class="player-container">
-                <div class="player-controls">
-                    <button id="prevBtn" title="Krok zpět">⏪</button>
-                    <button id="playBtn" title="Přehrát/Pozastavit">▶️</button>
-                    <button id="nextBtn" title="Krok vpřed">⏩</button>
-                </div>
+                <button id="prevBtn" class="action-button" title="Krok zpět">
+                    <span class="button-icon">⏪</span>
+                </button>
+                <button id="playBtn" class="action-button" title="Přehrát/Pozastavit">
+                    <span class="button-icon">▶️</span>
+                </button>
+                <button id="nextBtn" class="action-button" title="Krok vpřed">
+                    <span class="button-icon">⏩</span>
+                </button>
                 <div class="player-info">
-                    <span>Rychlost:</span>
                     <input type="range" id="speedSlider" min="1" max="100" value="50" title="Rychlost přehrávání">
                     <span>Řádek: <span id="currentLine">0</span>/<span id="totalLines">0</span></span>
                 </div>
             </div>
         </div>
+        <div class="program-list" id="programList"></div>
         <div class="editor-container">
-            <div class="toolbar">
-                <div class="file-input-container">
-                    <label class="file-input-button">
-                        Vybrat soubory
-                        <input type="file" id="actualFileInput" accept=".mpf,.spf" multiple style="display: none;">
-                    </label>
-                </div>
-                <div class="program-list" id="programList"></div>
-                <button onclick="window.simulator.resetView()" class="action-button">Aktualizovaný pohled</button>
-                <button onclick="showParameters()" class="action-button">Parametry</button>
-            </div>
             <div class="editor-wrapper">
                 <textarea id="editor" spellcheck="false" placeholder="Vložte váš CNC program zde..."></textarea>
             </div>
@@ -1515,6 +1642,17 @@
 
                 // Přidat event listener pro kliknutí na canvas
                 this.canvas.addEventListener('click', this.handleCanvasClick.bind(this));
+
+                // Vylepšit touch podporu
+                this.canvas.style.touchAction = 'none';
+                this.lastTouchDistance = 0;
+                this.touchStartX = 0;
+                this.touchStartY = 0;
+
+                // Přidat event listenery pro lepší touch ovládání
+                this.canvas.addEventListener('touchstart', this.handleTouchStart.bind(this), { passive: false });
+                this.canvas.addEventListener('touchmove', this.handleTouchMove.bind(this), { passive: false });
+                this.canvas.addEventListener('touchend', this.handleTouchEnd.bind(this));
             }
 
             handleZoom(event) {
@@ -1597,78 +1735,64 @@
 
             handleTouchStart(event) {
                 event.preventDefault();
+
                 if (event.touches.length === 2) {
-                    // Začátek pinch-to-zoom
+                    // Zoom pomocí dvou prstů
                     const touch1 = event.touches[0];
                     const touch2 = event.touches[1];
-                    this.touchStartDistance = Math.hypot(
+                    this.lastTouchDistance = Math.hypot(
                         touch2.clientX - touch1.clientX,
                         touch2.clientY - touch1.clientY
                     );
-                    this.touchStartScale = this.zoomFactor;
+                    this.touchZoomStartScale = this.zoomFactor;
                 } else if (event.touches.length === 1) {
+                    // Posouvání jedním prstem
                     const touch = event.touches[0];
-                    const rect = this.canvas.getBoundingClientRect();
-                    const point = this.findPointNearTouch(touch.clientX - rect.left, touch.clientY - rect.top);
-
-                    if (point) {
-                        this.handlePointSelect(point);
-                    } else {
-                        // Začátek posouvání
-                        this.isDragging = true;
-                        this.lastMouseX = touch.clientX;
-                        this.lastMouseY = touch.clientY;
-                    }
+                    this.touchStartX = touch.clientX;
+                    this.touchStartY = touch.clientY;
+                    this.isDragging = true;
                 }
             }
 
             handleTouchMove(event) {
-                if (this.isLongPress && event.touches.length === 1) {
-                    const touch = event.touches[0];
-                    this.crosshair.style.left = (touch.clientX - 10) + 'px';
-                    this.crosshair.style.top = (touch.clientY - 10) + 'px';
-                    // Zkontrolovat bod pod křížkem
-                    this.checkPointUnderCrosshair(touch.clientX, touch.clientY);
-                } else if (event.touches.length === 2) {
-                    event.preventDefault();
-                    // Zoom pomocí dvou prstů
+                event.preventDefault();
+
+                if (event.touches.length === 2) {
+                    // Zoom
                     const touch1 = event.touches[0];
                     const touch2 = event.touches[1];
                     const distance = Math.hypot(
                         touch2.clientX - touch1.clientX,
                         touch2.clientY - touch1.clientY
                     );
+
                     const scale = distance / this.lastTouchDistance;
-                    this.zoomFactor = this.touchZoomStartScale * scale;
-                    this.zoomFactor = Math.min(Math.max(this.zoomFactor, 0.1), 10);
+                    this.zoomFactor = Math.min(Math.max(this.touchZoomStartScale * scale, 0.1), 10);
                     this.scale = this.baseScale * this.zoomFactor;
 
-                    // Překreslit mřížku při změně zoomu
+                    // Aktualizovat zobrazení
                     this.gridCache = this.createGridCache();
                     this.simulate(false);
                 } else if (event.touches.length === 1 && this.isDragging) {
+                    // Posouvání
                     const touch = event.touches[0];
-                    const deltaX = touch.clientX - this.lastMouseX;
-                    const deltaY = touch.clientY - this.lastMouseY;
+                    const deltaX = touch.clientX - this.touchStartX;
+                    const deltaY = touch.clientY - this.touchStartY;
 
                     this.centerX += deltaX;
                     this.centerY += deltaY;
 
-                    this.lastMouseX = touch.clientX;
-                    this.lastMouseY = touch.clientY;
+                    this.touchStartX = touch.clientX;
+                    this.touchStartY = touch.clientY;
 
-                    // Překreslit mřížku při každém posunu
+                    // Aktualizovat zobrazení
                     this.gridCache = this.createGridCache();
                     this.simulate();
                 }
             }
 
-            handleTouchEnd() {
-                this.isLongPress = false;
-                clearTimeout(this.longPressTimeout);
-                this.crosshair.style.display = 'none';
+            handleTouchEnd(event) {
                 this.isDragging = false;
-                this.tooltip.style.display = 'none';
                 this.lastTouchDistance = 0;
             }
 
@@ -2553,52 +2677,6 @@
         }
 
         // Event handlers
-        fileInput.addEventListener('change', async function(event) {
-            if (!window.simulator || !window.simulator.parser) return;
-
-            const files = Array.from(this.files);
-            const programList = document.getElementById('programList');
-            programList.innerHTML = '';
-
-            // Načíst všechny soubory
-            for (const file of files) {
-                await window.simulator.parser.loadProgram(file);
-
-                const item = document.createElement('div');
-                item.className = 'program-list-item';
-                // Remove file extension from display name
-                const displayName = file.name.replace(/\.(SPF|MPF)$/i, '');
-                item.textContent = displayName;
-                item.onclick = async () => {
-                    // Označit aktivní program
-                    programList.querySelectorAll('.program-list-item')
-                        .forEach(i => i.classList.remove('active'));
-                    item.classList.add('active');
-
-                    // Načíst obsah do editoru
-                    const content = window.simulator.parser.getProgram(file.name);
-                    if (content) {
-                        editor.value = content;
-                        await simulateProgram();
-                    }
-                };
-                programList.appendChild(item);
-            }
-
-            // Automaticky načíst první program
-            if (files.length > 0) {
-                const firstFile = files[0];
-                const content = await window.simulator.parser.loadProgram(firstFile);
-                if (content) {
-                    editor.value = content;
-                    programList.firstChild?.classList.add('active');
-                    await simulateProgram();
-                }
-            }
-
-            debug(`Načteno ${files.length} programů`);
-        });
-
         window.addEventListener('DOMContentLoaded', () => {
             try {
                 // Vytvořit globální simulátor
@@ -2614,6 +2692,54 @@
                 // Vytvořit přehrávač
                 if (window.simulator) {
                     window.simulator.player = new CNCPlayer(window.simulator);
+                }
+
+                // Event listener pro výběr souborů
+                const fileInput = document.getElementById('actualFileInput');
+                const programList = document.getElementById('programList');
+
+                if (fileInput && programList) {
+                    fileInput.addEventListener('change', async function(event) {
+                        if (!window.simulator || !window.simulator.parser) return;
+
+                        const files = Array.from(this.files);
+                        programList.innerHTML = '';
+
+                        // Načíst všechny soubory
+                        for (const file of files) {
+                            await window.simulator.parser.loadProgram(file);
+
+                            const item = document.createElement('div');
+                            item.className = 'program-list-item';
+                            const displayName = file.name.replace(/\.(SPF|MPF)$/i, '');
+                            item.textContent = displayName;
+                            item.onclick = async () => {
+                                programList.querySelectorAll('.program-list-item')
+                                    .forEach(i => i.classList.remove('active'));
+                                item.classList.add('active');
+
+                                const content = window.simulator.parser.getProgram(file.name);
+                                if (content) {
+                                    editor.value = content;
+                                    await simulateProgram();
+                                }
+                            };
+                            programList.appendChild(item);
+                        }
+
+                        // Automaticky načíst první program
+                        if (files.length > 0) {
+                            const firstFile = files[0];
+                            const content = await window.simulator.parser.loadProgram(firstFile);
+                            if (content) {
+                                editor.value = content;
+                                programList.firstChild?.classList.add('active');
+                                await simulateProgram();
+                            }
+                        }
+
+                        debug(`Načteno ${files.length} programů`);
+                    });
                 }
 
                 // Event listener pro editor
