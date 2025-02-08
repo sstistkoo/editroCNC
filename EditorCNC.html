@@ -255,6 +255,71 @@
                 r: 5;
             }
         }
+
+        /* Přidat styly pro ovládací prvky přehrávače */
+        .player-controls {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 5px;
+            border-radius: 4px;
+            display: flex;
+            gap: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .player-controls button {
+            padding: 5px 10px;
+            border: 1px solid #ccc;
+            background: white;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .player-controls button:hover {
+            background: #f0f0f0;
+        }
+
+        .player-controls button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .playback-progress {
+            position: absolute;
+            bottom: 50px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 5px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        /* Upravit styly přehrávače */
+        .player-controls {
+            /* ...existing styles... */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .player-controls button {
+            width: 40px;
+            height: 40px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            /* ...rest of existing button styles... */
+        }
+
+        #speedSlider {
+            width: 100px;
+        }
     </style>
 </head>
 <body>
@@ -265,6 +330,15 @@
                 <div class="position-info">
                     Aktuální: X: <span id="posX">0.000</span> Z: <span id="posZ">0.000</span><br>
                     Vybraný: X: <span id="selectedPosX">-</span> Z: <span id="selectedPosZ">-</span>
+                </div>
+                <div class="player-controls">
+                    <button id="prevBtn" title="Krok zpět">⏪</button>
+                    <button id="playBtn" title="Přehrát/Pozastavit">▶️</button>
+                    <button id="nextBtn" title="Krok vpřed">⏩</button>
+                    <input type="range" id="speedSlider" min="1" max="100" value="50" title="Rychlost přehrávání">
+                </div>
+                <div class="playback-progress">
+                    Řádek: <span id="currentLine">0</span> / <span id="totalLines">0</span>
                 </div>
             </div>
         </div>
@@ -475,7 +549,7 @@
                     const midZ = (startPoint.z + endPoint.z) / 2;
 
                     // Směrový vektor kolmý na tětivu
-                    const dirX = -(endPoint.z - startPoint.z) / chord;
+                    const dirX = -(endPoint.z - startPoint.x) / chord;
                     const dirZ = (endPoint.x - startPoint.x) / chord;
 
                     // Znaménko podle směru G2/G3
@@ -1773,6 +1847,152 @@
             }
         }
 
+        class CNCPlayer {
+            constructor(simulator) {
+                this.simulator = simulator;
+                this.movements = [];
+                this.currentIndex = 0;
+                this.isPlaying = false;
+                this.playTimer = null;
+                this.speed = 50; // Výchozí rychlost (1-100)
+
+                // Ovládací prvky
+                this.playBtn = document.getElementById('playBtn');
+                this.prevBtn = document.getElementById('prevBtn');
+                this.nextBtn = document.getElementById('nextBtn');
+                this.speedSlider = document.getElementById('speedSlider');
+                this.currentLineSpan = document.getElementById('currentLine');
+                this.totalLinesSpan = document.getElementById('totalLines');
+
+                // Event listeners
+                this.playBtn.addEventListener('click', () => this.togglePlay());
+                this.prevBtn.addEventListener('click', () => this.prev());
+                this.nextBtn.addEventListener('click', () => this.next());
+                this.speedSlider.addEventListener('input', (e) => this.setSpeed(e.target.value));
+
+                this.updateControls();
+            }
+
+            togglePlay() {
+                if (this.isPlaying) {
+                    this.pause();
+                } else {
+                    this.play();
+                }
+            }
+
+            play() {
+                if (this.currentIndex >= this.movements.length) {
+                    this.currentIndex = 0;
+                }
+
+                this.isPlaying = true;
+                this.playBtn.textContent = '⏸️';
+                this.playBtn.title = 'Pozastavit';
+                this.updateControls();
+                this.playNext();
+            }
+
+            pause() {
+                this.isPlaying = false;
+                this.playBtn.textContent = '▶️';
+                this.playBtn.title = 'Přehrát';
+                clearTimeout(this.playTimer);
+                this.updateControls();
+            }
+
+            prev() {
+                if (this.currentIndex > 0) {
+                    this.currentIndex--;
+                    this.drawMovements(this.currentIndex);
+                    this.updateCurrentLine();
+                    this.updateControls();
+                }
+            }
+
+            next() {
+                if (this.currentIndex < this.movements.length) {
+                    this.drawMovements(this.currentIndex);
+                    this.currentIndex++;
+                    this.updateCurrentLine();
+                    this.updateControls();
+                }
+            }
+
+            updateControls() {
+                // Aktualizace stavu tlačítek
+                this.prevBtn.disabled = this.currentIndex <= 0 || this.isPlaying;
+                this.nextBtn.disabled = this.currentIndex >= this.movements.length || this.isPlaying;
+                this.speedSlider.disabled = !this.isPlaying;
+            }
+
+            setProgram(program) {
+                this.movements = this.simulator.parser.parseProgram(program);
+                this.currentIndex = 0;
+                this.totalLinesSpan.textContent = this.movements.length;
+                this.updateCurrentLine();
+                this.stop();
+            }
+
+            playNext() {
+                if (!this.isPlaying || this.currentIndex >= this.movements.length) {
+                    this.stop();
+                    return;
+                }
+
+                // Vykreslit aktuální pohyb
+                this.drawMovements(this.currentIndex);
+                this.updateCurrentLine();
+                this.currentIndex++;
+
+                // Naplánovat další pohyb
+                const delay = this.calculateDelay();
+                this.playTimer = setTimeout(() => this.playNext(), delay);
+            }
+
+            calculateDelay() {
+                // Převod rychlosti (1-100) na čas (1000ms - 50ms)
+                return 1000 - (this.speed * 9.5);
+            }
+
+            stop() {
+                this.isPlaying = false;
+                this.currentIndex = 0;
+                clearTimeout(this.playTimer);
+                this.playBtn.textContent = '▶️';
+                this.playBtn.title = 'Přehrát';
+                this.updateCurrentLine();
+                this.updateControls();
+                this.simulator.simulate(); // Překreslit celou simulaci
+            }
+
+            step() {
+                if (this.currentIndex < this.movements.length) {
+                    this.drawMovements(this.currentIndex);
+                    this.currentIndex++;
+                    this.updateCurrentLine();
+                }
+            }
+
+            setSpeed(value) {
+                this.speed = parseInt(value);
+                if (this.isPlaying) {
+                    // Restartovat přehrávání s novou rychlostí
+                    clearTimeout(this.playTimer);
+                    this.playNext();
+                }
+            }
+
+            drawMovements(upToIndex) {
+                const currentMovements = this.movements.slice(0, upToIndex + 1);
+                this.simulator.drawPath(currentMovements);
+            }
+
+            updateCurrentLine() {
+                this.currentLineSpan.textContent = this.currentIndex;
+            }
+        }
+
         // Event handlers
         fileInput.addEventListener('change', function(event) {
             const file = event.target.files[0];
@@ -1790,7 +2010,40 @@
             }
         });
 
-        function saveFile() {
+        window.addEventListener('DOMContentLoaded', () => {
+            // 1. Nejprve vytvořit simulátor
+            window.simulator = new Simulator();
+
+            // 2. Pak vytvořit přehrávač
+            window.simulator.player = new CNCPlayer(window.simulator);
+
+            // 3. Nastavit event listener pro editor
+            const debouncedSimulate = debounce(() => window.simulator.simulate(), 100);
+            editor.addEventListener('input', debouncedSimulate);
+
+            // 4. Ostatní inicializace
+            if ('ontouchstart' in window) {
+                document.addEventListener('touchmove', function(event) {
+                    if (event.scale !== 1) {
+                        event.preventDefault();
+                    }
+                }, { passive: false });
+
+                document.addEventListener('gesturestart', function(event) {
+                    event.preventDefault();
+                });
+            }
+
+            debug('Aplikace inicializována');
+        });
+
+        // Přesunout globální funkce na začátek
+        window.simulateProgram = function() {
+            window.simulator.simulate();
+            window.simulator.player.setProgram(editor.value);
+        }
+
+        window.saveFile = function() {
             const content = editor.value;
             if (!content.trim()) {
                 debug('Pokus o uložení prázdného programu');
@@ -1811,34 +2064,8 @@
             debug('Program uložen');
         }
 
-        function simulateProgram() {
-            window.simulator.simulate();
-        }
-
-        function resetView() {
+        window.resetView = function() {
             window.simulator.resetView();
-        }
-
-        // Inicializace
-        window.simulator = new Simulator();
-        const debouncedSimulate = debounce(() => window.simulator.simulate(), 100);
-        editor.addEventListener('input', debouncedSimulate);
-        debug('Aplikace inicializována');
-        // Odstraněno volání updateStatusBar
-
-        // Optimalizace pro mobilní zařízení
-        if ('ontouchstart' in window) {
-            // Zabránit výchozímu chování prohlížeče při zoomu
-            document.addEventListener('touchmove', function(event) {
-                if (event.scale !== 1) {
-                    event.preventDefault();
-                }
-            }, { passive: false });
-
-            // Optimalizace pro iOS
-            document.addEventListener('gesturestart', function(event) {
-                event.preventDefault();
-            });
         }
 
         // Event listener pro kliknutí na řádek v editoru
