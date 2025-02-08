@@ -275,7 +275,7 @@
                 <span class="file-name" id="fileName">Žádný soubor nevybrán</span>
                 <button onclick="saveFile()">Uložit</button>
                 <button onclick="simulateProgram()">Simulovat</button>
-                <button onclick="resetView()">Reset pohledu</button>
+                <button onclick="window.simulator.resetView()">Reset pohledu</button>
             </div>
             <textarea id="editor" spellcheck="false" placeholder="Vložte váš CNC program zde..."></textarea>
         </div>
@@ -350,6 +350,305 @@
                 }
             }
 
+            calculateArcPoints(start, end, center, isClockwise, resolution = 50) {
+                const startAngle = Math.atan2(start.x - center.x, start.z - center.z);
+                const endAngle = Math.atan2(end.x - center.x, end.z - center.z);
+
+                let radius = Math.hypot(start.x - center.x, start.z - center.z);
+                let angleStep;
+                let points = [];
+
+                // Výpočet úhlu v závislosti na směru
+                let totalAngle = endAngle - startAngle;
+                if (isClockwise) {
+                    if (totalAngle >= 0) totalAngle -= 2 * Math.PI;
+                } else {
+                    if (totalAngle <= 0) totalAngle += 2 * Math.PI;
+                }
+
+                angleStep = totalAngle / resolution;
+
+                // Generování bodů na oblouku
+                for (let i = 0; i <= resolution; i++) {
+                    const angle = startAngle + angleStep * i;
+                    const x = center.x + radius * Math.sin(angle);
+                    const z = center.z + radius * Math.cos(angle);
+                    points.push({ x: Number(x.toFixed(3)), z: Number(z.toFixed(3)) });
+                }
+
+                return points;
+            }
+
+            parseArcMovement(words, movement) {
+                let hasCR = false;
+                let hasAR = false;
+                let arcRadius = 0;
+
+                // Parametry pro Sinumerik 840D
+                const params = {
+                    CR: null,
+                    AR: null,
+                    I: null,
+                    K: null,
+                    I1: null,
+                    K1: null,
+                    CT: null,
+                    TURN: 0
+                };
+
+                // Načtení všech parametrů
+                for (let word of words) {
+                    if (word.includes('=')) {
+                        const [param, value] = word.split('=');
+                        const numValue = parseFloat(value);
+                        switch (param.toUpperCase()) {
+                            case 'CR':
+                                // CR je vždy absolutní hodnota
+                                params.CR = Math.abs(numValue);
+                                hasCR = true;
+                                break;
+                            case 'AR': params.AR = numValue; break;
+                            case 'TURN': params.TURN = parseInt(value); break;
+                        }
+                        continue;
+                    }
+
+                    const command = word[0];
+                    const value = parseFloat(word.slice(1));
+                    if (isNaN(value)) continue;
+
+                    // Zpracování I,K parametrů s ohledem na G90/G91
+                    switch (command) {
+                        case 'I':
+                            // V G91 jsou I,K relativní k počátečnímu bodu
+                            params.I = this.absoluteMode ? value : movement.fromX + value;
+                            break;
+                        case 'K':
+                            params.K = this.absoluteMode ? value : movement.fromZ + value;
+                            break;
+                        case 'I1':
+                            // I1,K1 jsou vždy relativní k počátečnímu bodu
+                            params.I1 = movement.fromX + value;
+                            break;
+                        case 'K1':
+                            params.K1 = movement.fromZ + value;
+                            break;
+                    }
+                }
+
+                const startPoint = { x: movement.fromX, z: movement.fromZ };
+                const endPoint = { x: movement.toX, z: movement.toZ };
+                let centerPoint = { x: 0, z: 0 };
+
+                // Určení středu oblouku podle priority parametrů
+                if (params.I !== null && params.K !== null) {
+                    // Střed zadaný pomocí I,K
+                    centerPoint = { x: params.I, z: params.K };
+                } else if (params.I1 !== null && params.K1 !== null) {
+                    // Střed zadaný pomocí I1,K1
+                    centerPoint = { x: params.I1, z: params.K1 };
+                } else if (hasCR) {
+                    // Výpočet středu pomocí poloměru CR
+                    const chord = Math.hypot(endPoint.x - startPoint.x, endPoint.z - startPoint.z);
+                    if (params.CR < chord / 2) {
+                        console.warn('CR je příliš malý, použije se minimální možný poloměr');
+                        params.CR = chord / 2;
+                    }
+
+                    const h = Math.sqrt(params.CR * params.CR - (chord * chord / 4));
+                    const midX = (startPoint.x + endPoint.x) / 2;
+                    const midZ = (startPoint.z + endPoint.z) / 2;
+
+                    // Směrový vektor kolmý na tětivu
+                    const dirX = -(endPoint.z - startPoint.z) / chord;
+                    const dirZ = (endPoint.x - startPoint.x) / chord;
+
+                    // Znaménko podle směru G2/G3
+                    const sign = movement.type === 'G2' ? -1 : 1;
+
+                    centerPoint = {
+                        x: midX + sign * h * dirX,
+                        z: midZ + sign * h * dirZ
+                    };
+                }
+
+                // Výpočet bodů na oblouku
+                const radius = Math.hypot(startPoint.x - centerPoint.x, startPoint.z - centerPoint.z);
+                const startAngle = Math.atan2(startPoint.x - centerPoint.x, startPoint.z - centerPoint.z);
+                let endAngle = Math.atan2(endPoint.x - centerPoint.x, endPoint.z - centerPoint.z);
+
+                // Upravit úhel podle směru a počtu otáček
+                if (movement.type === 'G2') { // CW
+                    if (endAngle >= startAngle) endAngle -= 2 * Math.PI;
+                    endAngle -= 2 * Math.PI * (params.TURN || 0);
+                } else { // CCW (G3)
+                    if (endAngle <= startAngle) endAngle += 2 * Math.PI;
+                    endAngle += 2 * Math.PI * (params.TURN || 0);
+                }
+
+                // Vygenerovat body oblouku
+                const points = [];
+                const steps = Math.max(50, Math.abs(endAngle - startAngle) * 20);
+                const angleStep = (endAngle - startAngle) / steps;
+
+                for (let i = 0; i <= steps; i++) {
+                    const angle = startAngle + angleStep * i;
+                    const x = centerPoint.x + radius * Math.sin(angle);
+                    const z = centerPoint.z + radius * Math.cos(angle);
+                    points.push({
+                        x: Number(x.toFixed(3)),
+                        z: Number(z.toFixed(3))
+                    });
+                }
+
+                return points;
+            }
+
+            parseArcMovement(words, movement) {
+                let hasCR = false;
+                let hasAR = false;
+                let arcRadius = 0;
+
+                // Parametry pro Sinumerik 840D
+                const params = {
+                    CR: null,
+                    AR: null,
+                    I: null,
+                    K: null,
+                    I1: null,
+                    K1: null,
+                    CT: null,
+                    TURN: 0
+                };
+
+                // Načtení všech parametrů
+                for (let word of words) {
+                    if (word.includes('=')) {
+                        const [param, value] = word.split('=');
+                        const numValue = parseFloat(value);
+                        switch (param.toUpperCase()) {
+                            case 'CR':
+                                // CR je vždy absolutní hodnota
+                                params.CR = Math.abs(numValue);
+                                hasCR = true;
+                                break;
+                            case 'AR': params.AR = numValue; break;
+                            case 'TURN': params.TURN = parseInt(value); break;
+                        }
+                        continue;
+                    }
+
+                    const command = word[0];
+                    const value = parseFloat(word.slice(1));
+                    if (isNaN(value)) continue;
+
+                    // Zpracování I,K parametrů s ohledem na G90/G91
+                    switch (command) {
+                        case 'I':
+                            // V G91 jsou I,K relativní k počátečnímu bodu
+                            params.I = this.absoluteMode ? value : movement.fromX + value;
+                            break;
+                        case 'K':
+                            params.K = this.absoluteMode ? value : movement.fromZ + value;
+                            break;
+                        case 'I1':
+                            // I1,K1 jsou vždy relativní k počátečnímu bodu
+                            params.I1 = movement.fromX + value;
+                            break;
+                        case 'K1':
+                            params.K1 = movement.fromZ + value;
+                            break;
+                    }
+                }
+
+                const startPoint = { x: movement.fromX, z: movement.fromZ };
+                const endPoint = { x: movement.toX, z: movement.toZ };
+                let centerPoint = { x: 0, z: 0 };
+
+                // Určení středu oblouku
+                if (params.I !== null && params.K !== null) {
+                    centerPoint = { x: params.I, z: params.K };
+                } else if (params.I1 !== null && params.K1 !== null) {
+                    centerPoint = { x: params.I1, z: params.K1 };
+                } else if (hasCR) {
+                    const chord = Math.hypot(endPoint.x - startPoint.x, endPoint.z - startPoint.z);
+                    if (params.CR < chord / 2) {
+                        console.warn('CR je příliš malý, použije se minimální možný poloměr');
+                        params.CR = chord / 2;
+                    }
+
+                    // Výpočet obou možných středů
+                    const h = Math.sqrt(params.CR * params.CR - (chord * chord / 4));
+                    const midX = (startPoint.x + endPoint.x) / 2;
+                    const midZ = (startPoint.z + endPoint.z) / 2;
+                    const dirX = -(endPoint.z - startPoint.z) / chord;
+                    const dirZ = (endPoint.x - startPoint.x) / chord;
+
+                    const center1 = {
+                        x: midX + h * dirX,
+                        z: midZ + h * dirZ
+                    };
+                    const center2 = {
+                        x: midX - h * dirX,
+                        z: midZ - h * dirZ
+                    };
+
+                    // Výpočet úhlů pro oba středy
+                    const angle1 = this.calculateArcAngle(startPoint, endPoint, center1, movement.type === 'G2');
+                    const angle2 = this.calculateArcAngle(startPoint, endPoint, center2, movement.type === 'G2');
+
+                    // Vybrat střed, který vytvoří menší oblouk
+                    centerPoint = Math.abs(angle1) <= Math.abs(angle2) ? center1 : center2;
+                }
+
+                // Uložit střed pro vizualizaci
+                movement.arcCenter = centerPoint;
+
+                // Výpočet bodů oblouku
+                const radius = Math.hypot(startPoint.x - centerPoint.x, startPoint.z - centerPoint.z);
+                const startAngle = Math.atan2(startPoint.x - centerPoint.x, startPoint.z - centerPoint.z);
+                let endAngle = Math.atan2(endPoint.x - centerPoint.x, endPoint.z - centerPoint.z);
+
+                // Vždy vybrat kratší cestu mezi body
+                let totalAngle = endAngle - startAngle;
+                if (movement.type === 'G2') { // CW
+                    if (totalAngle > 0) totalAngle -= 2 * Math.PI;
+                } else { // CCW
+                    if (totalAngle < 0) totalAngle += 2 * Math.PI;
+                }
+
+                // ...rest of arc point generation...
+                const points = [];
+                const steps = Math.max(50, Math.abs(totalAngle) * 20);
+                const angleStep = totalAngle / steps;
+
+                for (let i = 0; i <= steps; i++) {
+                    const angle = startAngle + angleStep * i;
+                    const x = centerPoint.x + radius * Math.sin(angle);
+                    const z = centerPoint.z + radius * Math.cos(angle);
+                    points.push({
+                        x: Number(x.toFixed(3)),
+                        z: Number(z.toFixed(3))
+                    });
+                }
+
+                return points;
+            }
+
+            calculateArcAngle(start, end, center, isClockwise) {
+                const startAngle = Math.atan2(start.x - center.x, start.z - center.z);
+                let endAngle = Math.atan2(end.x - center.x, end.z - center.z);
+                let totalAngle = endAngle - startAngle;
+
+                if (isClockwise) {
+                    if (totalAngle > 0) totalAngle -= 2 * Math.PI;
+                } else {
+                    if (totalAngle < 0) totalAngle += 2 * Math.PI;
+                }
+
+                return totalAngle;
+            }
+
             parseLine(line) {
                 // Nejprve vyčistit řádek a přidat mezery mezi G-kódy a souřadnice
                 const cleanedLine = line.trim()
@@ -400,6 +699,18 @@
                                     this.absoluteMode = false;
                                     console.log('✓ Nastaveno přírůstkové programování (G91)');
                                     break;
+                                case '2':
+                                    this.rapidMode = false;
+                                    movement.type = 'G2'; // CW
+                                    movement.isArc = true;
+                                    console.log('✓ Nastaven oblouk ve směru hodin (G2)');
+                                    break;
+                                case '3':
+                                    this.rapidMode = false;
+                                    movement.type = 'G3'; // CCW
+                                    movement.isArc = true;
+                                    console.log('✓ Nastaven oblouk proti směru hodin (G3)');
+                                    break;
                             }
                             break;
                         case 'X':
@@ -415,6 +726,11 @@
                             console.log(`➜ Z pozice: ${movement.toZ}`);
                             break;
                     }
+                }
+
+                // Po zpracování všech souřadnic zpracovat oblouk
+                if (hasMove && (movement.type === 'G2' || movement.type === 'G3')) {
+                    movement.arcPoints = this.parseArcMovement(words, movement);
                 }
 
                 if (hasMove) {
@@ -920,26 +1236,45 @@
 
                 for (let move of movements) {
                     const from = this.worldToScreen(move.fromX, move.fromZ);
-                    const to = this.worldToScreen(move.toX, move.toZ);
 
-                    if (move.rapid) {
-                        batchRapid.push({from, to});
+                    if (move.isArc && move.arcPoints) {
+                        // Vykreslení oblouku
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(from.x, from.y);
+
+                        for (let point of move.arcPoints) {
+                            const screenPoint = this.worldToScreen(point.x, point.z);
+                            this.ctx.lineTo(screenPoint.x, screenPoint.y);
+                        }
+
+                        this.ctx.strokeStyle = '#007bff';
+                        this.ctx.lineWidth = 2;
+                        this.ctx.stroke();
+
+                        // Uložit koncový bod pro detekci
+                        const lastPoint = move.arcPoints[move.arcPoints.length - 1];
+                        this.points.push({
+                            screenX: this.worldToScreen(lastPoint.x, lastPoint.z).x,
+                            screenY: this.worldToScreen(lastPoint.x, lastPoint.z).y,
+                            x: lastPoint.x,
+                            z: lastPoint.z
+                        });
                     } else {
-                        batchNormal.push({from, to});
+                        // Původní vykreslení přímých pohybů
+                        const to = this.worldToScreen(move.toX, move.toZ);
+                        if (move.rapid) {
+                            batchRapid.push({from, to});
+                        } else {
+                            batchNormal.push({from, to});
+                        }
+
+                        this.points.push({
+                            screenX: to.x,
+                            screenY: to.y,
+                            x: move.toX,
+                            z: move.toZ
+                        });
                     }
-
-                    // Uložení bodu pro pozdější detekci
-                    this.points.push({
-                        screenX: to.x,
-                        screenY: to.y,
-                        x: move.toX,
-                        z: move.toZ
-                    });
-
-                    // Vykreslení bodu
-                    this.ctx.beginPath();
-                    this.ctx.arc(to.x, to.y, 2, 0, Math.PI * 2);
-                    this.ctx.fill();
                 }
 
                 // Vykreslení rychloposuvů
@@ -961,6 +1296,33 @@
                     this.ctx.lineTo(move.to.x, move.to.y);
                 }
                 this.ctx.stroke();
+
+                // Vykreslit středy oblouků
+                this.ctx.strokeStyle = '#00ff00';
+                this.ctx.fillStyle = '#00ff00';
+
+                for (let move of movements) {
+                    if (move.isArc && move.arcCenter) {
+                        const center = this.worldToScreen(move.arcCenter.x, move.arcCenter.z);
+
+                        // Vykreslení křížku pro střed
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(center.x - 5, center.y - 5);
+                        this.ctx.lineTo(center.x + 5, center.y + 5);
+                        this.ctx.moveTo(center.x + 5, center.y - 5);
+                        this.ctx.lineTo(center.x - 5, center.y + 5);
+                        this.ctx.stroke();
+
+                        // Přidat tooltip se souřadnicemi středu
+                        this.points.push({
+                            screenX: center.x,
+                            screenY: center.y,
+                            x: move.arcCenter.x,
+                            z: move.arcCenter.z,
+                            isCenter: true
+                        });
+                    }
+                }
 
                 // Aktualizace pozice pouze pro poslední pohyb
                 if (movements.length > 0) {
@@ -1026,7 +1388,11 @@
                     this.tooltip.style.display = 'block';
                     this.tooltip.style.left = (event.clientX + 10) + 'px';
                     this.tooltip.style.top = (event.clientY - 20) + 'px';
-                    this.tooltip.textContent = `X${this.formatNumber(hitPoint.x)} Z${this.formatNumber(hitPoint.z)}`;
+                    if (hitPoint.isCenter) {
+                        this.tooltip.textContent = `Střed: X${this.formatNumber(hitPoint.x)} Z${this.formatNumber(hitPoint.z)}`;
+                    } else {
+                        this.tooltip.textContent = `X${this.formatNumber(hitPoint.x)} Z${this.formatNumber(hitPoint.z)}`;
+                    }
                 } else {
                     this.canvas.style.cursor = this.isDragging ? 'grabbing' : 'default';
                     this.tooltip.style.display = 'none';
