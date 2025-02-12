@@ -78,13 +78,19 @@
         /* Mobilní optimalizace */
         @media (max-width: 768px) {
             .simulator {
-                height: 40vh; /* Zmenšeno pro lepší viditelnost editoru */
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 45vh;
+                z-index: 100;
+                background: #fff;
             }
 
             .editor-container {
-                height: 50vh; /* Zvětšeno pro lepší čitelnost */
-                display: flex;
-                flex-direction: column;
+                margin-top: 45vh;
+                height: 55vh;
+                position: relative;
             }
 
             .toolbar {
@@ -124,6 +130,9 @@
                 overflow-y: auto;
                 -webkit-overflow-scrolling: touch;
                 overscroll-behavior: contain;
+                inputmode: numeric;
+                pattern: "[0-9]*";
+                -webkit-appearance: none;
             }
 
             /* Přidat styl pro fixní pozici označeného řádku */
@@ -132,6 +141,8 @@
                 top: 40px; /* Druhá pozice od vrchu */
                 background-color: #e6f3ff;
                 z-index: 1;
+                padding: 8px 0;
+                margin: 4px 0;
             }
 
             /* Zvětšit mezeru mezi řádky pro lepší dotykové ovládání */
@@ -2467,61 +2478,59 @@
             }
 
             highlightPoint(x, z) {
-                // Hledat bod s tolerancí kvůli zaokrouhlovacím chybám
-                this.highlightedPoint = this.points.find(point => {
-                    const dx = Math.abs(point.x - x);
-                    const dz = Math.abs(point.z - z);
-                    return dx < 0.001 && dz < 0.001; // tolerance 0.001mm
-                });
+                // Nejprve vyčistit předchozí zvýraznění
+                this.clearHighlight();
 
-                // Pokud není nalezen přesný bod, vytvoříme nový
-                if (!this.highlightedPoint) {
-                    this.highlightedPoint = { x, z };
-                }
+                this.highlightedPoint = { x, z };
 
-                // Přidat animační smyčku pro plynulou animaci
                 const animate = () => {
-                    if (this.highlightedPoint) {
-                        const point = this.worldToScreen(this.highlightedPoint.x, this.highlightedPoint.z);
+                    if (!this.highlightedPoint) return;
 
-                        this.ctx.save();
+                    const point = this.worldToScreen(this.highlightedPoint.x, this.highlightedPoint.z);
 
-                        // Vykreslení pevného bodu
-                        this.ctx.beginPath();
-                        this.ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
-                        this.ctx.fillStyle = '#ff0000';
-                        this.ctx.fill();
+                    this.ctx.save();
 
-                        // Pulzující kružnice
-                        const now = Date.now();
-                        const phase = (now % 1000) / 1000;
-                        const radius = 8 + Math.sin(phase * Math.PI * 2) * 4;
+                    // Vykreslení pevného bodu
+                    this.ctx.beginPath();
+                    this.ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
+                    this.ctx.fillStyle = '#ff0000';
+                    this.ctx.fill();
 
-                        this.ctx.beginPath();
-                        this.ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
-                        this.ctx.strokeStyle = '#ff0000';
-                        this.ctx.lineWidth = 2;
-                        this.ctx.stroke();
+                    // Pulzující kružnice
+                    const now = Date.now();
+                    const phase = (now % 1000) / 1000;
+                    const radius = 8 + Math.sin(phase * Math.PI * 2) * 4;
 
-                        this.ctx.restore();
+                    this.ctx.beginPath();
+                    this.ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = '#ff0000';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.stroke();
 
-                        // Pokračovat v animaci
-                        requestAnimationFrame(animate);
-                    }
+                    this.ctx.restore();
+
+                    // Uložit referenci na animaci
+                    this.animationFrame = requestAnimationFrame(animate);
                 };
 
-                // Spustit animační smyčku
+                // Spustit animaci
                 animate();
             }
 
             clearHighlight() {
+                // Zastavit všechny běžící animace
+                if (this.animationFrame) {
+                    cancelAnimationFrame(this.animationFrame);
+                    this.animationFrame = null;
+                }
+
                 this.highlightedPoint = null;
-                // Přidat kontrolu na existenci this.lastMovements
+
+                // Kompletní překreslení
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.drawAxes();
                 if (this.lastMovements) {
                     this.drawPath(this.lastMovements);
-                } else {
-                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                    this.drawAxes();
                 }
             }
 
@@ -2535,11 +2544,10 @@
                 // Vymazat předchozí zvýraznění
                 this.clearHighlight();
 
-                // Najít bod pod myší s větší tolerancí
                 const hitPoint = this.points.find(point => {
                     const dx = mouseX - point.screenX;
                     const dy = mouseY - point.screenY;
-                    return Math.sqrt(dx * dx + dy * dy) < 8; // Zvětšená tolerance
+                    return Math.sqrt(dx * dx + dy * dy) < 8;
                 });
 
                 if (hitPoint) {
@@ -2550,7 +2558,6 @@
                 }
             }
 
-            // Přidat novou metodu pro zvýraznění řádku a bodu
             highlightLineAndPoint(lineIndex, point) {
                 // Nejprve vyčistit předchozí zvýraznění
                 this.clearHighlight();
@@ -2938,6 +2945,36 @@
                         if (document.activeElement.tagName === 'TEXTAREA') {
                             window.scrollTo(0, 0);
                         }
+                    });
+                }
+
+                // Přidat handler pro mobilní zařízení
+                if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+                    const editor = document.getElementById('editor');
+
+                    // Nastavit editor pro numerickou klávesnici
+                    editor.setAttribute('inputmode', 'numeric');
+                    editor.setAttribute('pattern', '[0-9]*');
+
+                    // Upravit zobrazení při zobrazení klávesnice
+                    editor.addEventListener('focus', () => {
+                        setTimeout(() => {
+                            window.scrollTo(0, 0);
+                            window.simulator.resetView();
+                        }, 300);
+                    });
+
+                    // Přidat handler pro změnu velikosti okna
+                    let lastHeight = window.innerHeight;
+                    window.addEventListener('resize', () => {
+                        const newHeight = window.innerHeight;
+                        if (newHeight < lastHeight) {
+                            // Klávesnice se zobrazila - přepočítat zobrazení
+                            window.simulator.setupCanvas();
+                            window.simulator.simulate();
+                            window.simulator.resetView();
+                        }
+                        lastHeight = newHeight;
                     });
                 }
             } catch (error) {
