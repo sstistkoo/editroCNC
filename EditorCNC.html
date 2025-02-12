@@ -1840,7 +1840,7 @@
                     // Aktualizovat zobrazení
                     this.gridCache = this.createGridCache();
                     this.simulate(false);
-                } else if (event.touches.length === 1 && this.isDragging) {
+                } else if (event.touches.length === 1 && this.isDragging) { // Opraveno 'and' na '&&'
                     // Posouvání
                     const touch = event.touches[0];
                     const deltaX = touch.clientX - this.touchStartX;
@@ -1934,7 +1934,7 @@
                 const mainLines = [];
                 const subLines = [];
 
-                // Vykreslení vertikálních čar (osa Z)
+                // Vykreslení vertikálních čar (nyní osa X)
                 for (let x = startX; x <= endX; x += gridStep) {
                     const screenX = this.worldToScreen(x, 0).x;
                     const isMainLine = Math.abs(x % (gridStep * 5)) < 0.001;
@@ -1946,9 +1946,9 @@
                             ctx.moveTo(screenX, 0);
                             ctx.lineTo(screenX, this.canvas.height);
                             ctx.stroke();
-                            // Popisek pouze pro hlavní čáry
-                            if (Math.abs(x) > 0.001) { // Vynechat nulu
-                                ctx.fillText(`Z${x}`, screenX + 8, this.canvas.height - 20);
+                            // Změnit popisek z Z na X
+                            if (Math.abs(x) > 0.001) {
+                                ctx.fillText(`X${x}`, screenX + 8, this.canvas.height - 20);
                             }
                         });
                     } else {
@@ -1963,7 +1963,7 @@
                     }
                 }
 
-                // Vykreslení horizontálních čar (osa X)
+                // Vykreslení horizontálních čar (nyní osa Z)
                 for (let y = startY; y <= endY; y += gridStep) {
                     const screenY = this.worldToScreen(0, y).y;
                     const isMainLine = Math.abs(y % (gridStep * 5)) < 0.001;
@@ -1975,9 +1975,9 @@
                             ctx.moveTo(0, screenY);
                             ctx.lineTo(this.canvas.width, screenY);
                             ctx.stroke();
-                            // Popisek pouze pro hlavní čáry
-                            if (Math.abs(y) > 0.001) { // Vynechat nulu
-                                ctx.fillText(`X${y}`, 8, screenY + 8);
+                            // Změnit popisek z X na Z
+                            if (Math.abs(y) > 0.001) {
+                                ctx.fillText(`Z${y}`, 8, screenY + 8);
                             }
                         });
                     } else {
@@ -2001,7 +2001,6 @@
             }
 
             drawAxes() {
-                // Nejprve vykreslit mřížku
                 if (this.gridCache) {
                     this.ctx.drawImage(this.gridCache, 0, 0);
                 }
@@ -2012,26 +2011,31 @@
                 this.ctx.strokeStyle = '#000';
                 this.ctx.lineWidth = 2;
 
-                // Z osa (vertikální)
-                this.ctx.beginPath();
-                this.ctx.moveTo(origin.x, 0);
-                this.ctx.lineTo(origin.x, this.canvas.height);
-                this.ctx.stroke();
-
                 // X osa (horizontální)
                 this.ctx.beginPath();
                 this.ctx.moveTo(0, origin.y);
                 this.ctx.lineTo(this.canvas.width, origin.y);
                 this.ctx.stroke();
 
+                // Z osa (vertikální)
+                this.ctx.beginPath();
+                this.ctx.moveTo(origin.x, 0);
+                this.ctx.lineTo(origin.x, this.canvas.height);
+                this.ctx.stroke();
+
                 // Popisky os
                 this.ctx.fillStyle = '#000';
+                this.ctx.font = 'bold 22px Arial';
+
+                // X na konci horizontální osy vpravo
+                this.ctx.textAlign = 'right';
+                this.ctx.textBaseline = 'top';
+                this.ctx.fillText('X', this.canvas.width - 10, origin.y + 5);
+
+                // Z na vertikální ose nahoře
                 this.ctx.textAlign = 'left';
-                this.ctx.font = 'bold 14px Arial';
                 this.ctx.textBaseline = 'top';
                 this.ctx.fillText('Z', origin.x + 5, 5);
-                this.ctx.textAlign = 'right';
-                this.ctx.fillText('X', this.canvas.width - 5, origin.y - 20);
             }
 
             drawPath(movements) {
@@ -2532,11 +2536,12 @@
                 this.clearHighlight();
 
                 // Odstranit předchozí šipky
-                const lines = editor.value.split('\n').map(line => line.replace(/^→\s*/, ''));
+                const lines = editor.value.split('\n');
+                const cleanLines = lines.map(line => line.replace(/^→\s*/, ''));
 
                 // Přidat šipku k vybranému řádku
-                lines[lineIndex] = '→ ' + lines[lineIndex];
-                editor.value = lines.join('\n');
+                cleanLines[lineIndex] = '→ ' + cleanLines[lineIndex];
+                editor.value = cleanLines.join('\n');
 
                 // Aktualizovat zobrazené souřadnice
                 selectedPosXElement.textContent = this.formatNumber(point.x);
@@ -2616,6 +2621,13 @@
 
                 // Překreslit
                 this.drawPath(this.lastMovements);
+            }
+
+            async simulateToLine(lineIndex) {
+                const program = editor.value;
+                const lines = program.split('\n').slice(0, lineIndex + 1).join('\n');
+                const movements = await this.parser.parseProgram(lines);
+                this.drawPath(movements);
             }
         }
 
@@ -2730,6 +2742,15 @@
 
                     // Zvýraznit aktuální bod
                     this.simulator.highlightPoint(currentMove.toX, currentMove.toZ);
+
+                    // Synchronizovat editor s aktuálním pohybem
+                    const lineIndex = this.simulator.findLineByCoordinates(currentMove.toX, currentMove.toZ);
+                    if (lineIndex >= 0) {
+                        this.simulator.highlightLineAndPoint(lineIndex, {
+                            x: currentMove.toX,
+                            z: currentMove.toZ
+                        });
+                    }
                 }
             }
 
@@ -2945,6 +2966,9 @@
                         window.simulator.player.updateCurrentLine();
                     }
                 }
+
+                // Zobrazit celou simulaci do označeného bodu
+                await window.simulator.simulateToLine(clickedLineIndex);
             }
         });
 
@@ -2999,7 +3023,7 @@
                 .filter(([_, value]) => value !== 0) // Filtrovat pouze nenulové hodnoty
                 .sort((a, b) => {
                     const numA = parseInt(a[0].replace('R', ''));
-                    const numB = parseInt(b[0].replace('R', ''));
+                    const numB = parseInt(b[0].replace('R', '')); // Opraveno - odstraněn přebytečný uzávorkující operátor
                     return numA - numB;
                 });
 
