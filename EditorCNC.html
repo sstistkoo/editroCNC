@@ -78,11 +78,13 @@
         /* Mobilní optimalizace */
         @media (max-width: 768px) {
             .simulator {
-                height: 45vh; /* Zvětšen prostor pro simulátor */
+                height: 40vh; /* Zmenšeno pro lepší viditelnost editoru */
             }
 
             .editor-container {
-                height: 45vh; /* Upraveno pro lepší zobrazení */
+                height: 50vh; /* Zvětšeno pro lepší čitelnost */
+                display: flex;
+                flex-direction: column;
             }
 
             .toolbar {
@@ -114,10 +116,28 @@
             }
 
             #editor {
-                font-size: 16px; /* Větší písmo pro mobilní zařízení */
-                line-height: 1.4;
-                padding: 8px;
-                -webkit-tap-highlight-color: rgba(0,0,0,0);
+                font-size: 18px; /* Větší písmo pro mobilní zařízení */
+                line-height: 2em; /* Větší řádkování pro lepší čitelnost a klikání */
+                padding: 20px;
+                height: calc(100% - 40px); /* Výška mínus padding */
+                position: relative;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+                overscroll-behavior: contain;
+            }
+
+            /* Přidat styl pro fixní pozici označeného řádku */
+            .editor-line-highlight {
+                position: sticky;
+                top: 40px; /* Druhá pozice od vrchu */
+                background-color: #e6f3ff;
+                z-index: 1;
+            }
+
+            /* Zvětšit mezeru mezi řádky pro lepší dotykové ovládání */
+            .editor-line {
+                min-height: 2em;
+                padding: 8px 0;
             }
 
             /* Vylepšení scrollování pro touch zařízení */
@@ -2535,7 +2555,7 @@
                 // Nejprve vyčistit předchozí zvýraznění
                 this.clearHighlight();
 
-                // Odstranit předchozí šipky
+                // Odstranit předchozí šipky a třídy
                 const lines = editor.value.split('\n');
                 const cleanLines = lines.map(line => line.replace(/^→\s*/, ''));
 
@@ -2550,9 +2570,24 @@
                 // Zvýraznit bod
                 this.highlightPoint(point.x, point.z);
 
-                // Scrollovat k vybranému řádku
+                // Scrollovat k vybranému řádku a udržet ho na druhé pozici
                 const lineHeight = parseFloat(getComputedStyle(editor).lineHeight);
-                editor.scrollTop = lineIndex * lineHeight;
+                const viewportHeight = editor.clientHeight;
+                const targetPosition = lineHeight * (lineIndex - 1);
+
+                // Zajistit, aby označený řádek byl vždy viditelný a na druhé pozici
+                if (targetPosition < editor.scrollTop ||
+                    targetPosition > editor.scrollTop + viewportHeight - lineHeight * 3) {
+                    editor.scrollTop = Math.max(0, targetPosition);
+                }
+
+                // Přidat třídu pro zvýraznění řádku
+                const textLines = editor.value.split('\n');
+                const textareaContent = textLines.map((line, i) =>
+                    i === lineIndex ?
+                        `<div class="editor-line editor-line-highlight">${line}</div>` :
+                        `<div class="editor-line">${line}</div>`
+                ).join('');
 
                 // Překreslit
                 this.drawPath(this.lastMovements);
@@ -2889,6 +2924,21 @@
                         }
                     }, 100);
                     editor.addEventListener('input', debouncedSimulate);
+                }
+
+                // Přidat handler pro kontrolu zobrazení na mobilních zařízeních
+                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                if (isMobile) {
+                    // Upravit rozložení pro mobilní zařízení
+                    document.querySelector('.simulator').style.height = '40vh';
+                    document.querySelector('.editor-container').style.height = '50vh';
+
+                    // Přidat handler pro zabránění automatickému scrollování při zobrazení klávesnice
+                    window.addEventListener('resize', () => {
+                        if (document.activeElement.tagName === 'TEXTAREA') {
+                            window.scrollTo(0, 0);
+                        }
+                    });
                 }
             } catch (error) {
                 console.error('Chyba při inicializaci:', error);
