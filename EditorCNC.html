@@ -815,6 +815,50 @@
                 min-width: 150px; /* Větší minimální šířka na mobilu */
             }
         }
+
+        .mobile-crosshair {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            pointer-events: none;
+            z-index: 1002;
+            display: none;
+            transform: translate(-50%, -50%);
+        }
+
+        .mobile-crosshair::before,
+        .mobile-crosshair::after {
+            content: '';
+            position: absolute;
+            background: #ff0000;
+        }
+
+        .mobile-crosshair::before {
+            left: 19px;
+            width: 2px;
+            height: 40px;
+        }
+
+        .mobile-crosshair::after {
+            top: 19px;
+            height: 2px;
+            width: 40px;
+        }
+
+        .mobile-tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 16px;
+            pointer-events: none;
+            z-index: 1003;
+            min-width: 120px;
+            text-align: center;
+            transform: translate(-50%, -100%);
+            margin-top: -20px;
+        }
     </style>
 </head>
 <body>
@@ -1798,6 +1842,45 @@
                     this.crosshair = document.createElement('div');
                     this.crosshair.className = 'crosshair';
                     container.appendChild(this.crosshair);
+
+                    // Přidat mobilní křížek a tooltip
+                    this.mobileCrosshair = document.createElement('div');
+                    this.mobileCrosshair.className = 'mobile-crosshair';
+                    container.appendChild(this.mobileCrosshair);
+
+                    this.mobileTooltip = document.createElement('div');
+                    this.mobileTooltip.className = 'mobile-tooltip';
+                    container.appendChild(this.mobileTooltip);
+
+                    // Přidat long press handler
+                    let longPressTimer;
+                    let isMoved = false;
+
+                    this.canvas.addEventListener('touchstart', (e) => {
+                        if (e.touches.length === 1) {
+                            longPressTimer = setTimeout(() => {
+                                const touch = e.touches[0];
+                                this.showMobileCrosshair(touch.clientX, touch.clientY);
+                            }, 500); // 500ms pro long press
+                        }
+                    }, { passive: false });
+
+                    this.canvas.addEventListener('touchmove', (e) => {
+                        if (e.touches.length === 1 && this.mobileCrosshair.style.display === 'block') {
+                            e.preventDefault();
+                            const touch = e.touches[0];
+                            this.updateMobileCrosshair(touch.clientX, touch.clientY);
+                            isMoved = true;
+                        }
+                    }, { passive: false });
+
+                    this.canvas.addEventListener('touchend', () => {
+                        clearTimeout(longPressTimer);
+                        if (!isMoved) {
+                            this.hideMobileCrosshair();
+                        }
+                        isMoved = false;
+                    });
                 }
             }
 
@@ -2597,6 +2680,59 @@
                 const lines = program.split('\n').slice(0, lineIndex + 1).join('\n');
                 const movements = await this.parser.parseProgram(lines);
                 this.drawPath(movements);
+            }
+
+            showMobileCrosshair(x, y) {
+                this.mobileCrosshair.style.display = 'block';
+                this.mobileTooltip.style.display = 'block';
+                this.updateMobileCrosshair(x, y);
+            }
+
+            hideMobileCrosshair() {
+                this.mobileCrosshair.style.display = 'none';
+                this.mobileTooltip.style.display = 'none';
+            }
+
+            updateMobileCrosshair(clientX, clientY) {
+                const rect = this.canvas.getBoundingClientRect();
+                const x = clientX - rect.left;
+                const y = clientY - rect.top;
+
+                // Aktualizovat pozici křížku
+                this.mobileCrosshair.style.left = `${clientX}px`;
+                this.mobileCrosshair.style.top = `${clientY}px`;
+
+                // Najít nejbližší bod
+                const nearestPoint = this.findNearestPoint(x, y);
+                if (nearestPoint) {
+                    // Aktualizovat tooltip
+                    this.mobileTooltip.style.left = `${clientX}px`;
+                    this.mobileTooltip.style.top = `${clientY}px`;
+                    this.mobileTooltip.textContent =
+                        `X${this.formatNumber(nearestPoint.x)} Z${this.formatNumber(nearestPoint.z)}`;
+
+                    // Aktualizovat vybrané souřadnice
+                    selectedPosXElement.textContent = this.formatNumber(nearestPoint.x);
+                    selectedPosZElement.textContent = this.formatNumber(nearestPoint.z);
+                }
+            }
+
+            findNearestPoint(x, y) {
+                let nearest = null;
+                let minDistance = Infinity;
+
+                for (const point of this.points) {
+                    const dx = x - point.screenX;
+                    const dy = y - point.screenY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        nearest = point;
+                    }
+                }
+
+                return nearest;
             }
         }
 
