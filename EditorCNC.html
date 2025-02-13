@@ -25,6 +25,8 @@
             height: 50vh;
             width: 100%;
             border-bottom: 1px solid #ccc;
+            position: relative; /* Přidat relativní pozicování */
+            overflow: hidden; /* Přidat oříznutí přetečeného obsahu */
         }
 
         .editor-container {
@@ -41,6 +43,8 @@
             width: 100%;
             height: 100%;
             background: #f8f9fa;
+            position: relative; /* Přidat relativní pozicování */
+            overflow: hidden; /* Přidat oříznutí přetečeného obsahu */
         }
 
         .axis-label {
@@ -73,6 +77,9 @@
             pointer-events: none;
             text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
             min-width: 220px; /* Přidáno pro lepší čitelnost */
+            transform: translateZ(0); /* Přidat hardwarovou akceleraci */
+            backdrop-filter: blur(5px); /* Přidat rozmazané pozadí */
+            -webkit-backdrop-filter: blur(5px);
         }
 
         /* Mobilní optimalizace */
@@ -119,6 +126,8 @@
                 right: 5px;
                 top: 5px;
                 background: rgba(0, 0, 0, 0.9);
+                max-width: calc(100% - 10px); /* Omezit maximální šířku na mobilu */
+                box-sizing: border-box;
             }
 
             #editor {
@@ -824,6 +833,7 @@
             z-index: 1002;
             display: none;
             transform: translate(-50%, -50%);
+            touch-action: none;
         }
 
         .mobile-crosshair::before,
@@ -837,12 +847,14 @@
             left: 19px;
             width: 2px;
             height: 40px;
+            box-shadow: 0 0 4px rgba(0,0,0,0.5);
         }
 
         .mobile-crosshair::after {
             top: 19px;
             height: 2px;
             width: 40px;
+            box-shadow: 0 0 4px rgba(0,0,0,0.5);
         }
 
         .mobile-tooltip {
@@ -856,8 +868,9 @@
             z-index: 1003;
             min-width: 120px;
             text-align: center;
-            transform: translate(-50%, -100%);
+            transform: translate(-50%, -150%); /* Posunout tooltip výš nad křížek */
             margin-top: -20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
     </style>
 </head>
@@ -1854,32 +1867,56 @@
 
                     // Přidat long press handler
                     let longPressTimer;
-                    let isMoved = false;
+                    let isCrosshairVisible = false;
+                    let initialTouchY;
+                    let offsetY = -50; // Počáteční offset křížku nad prstem
 
                     this.canvas.addEventListener('touchstart', (e) => {
                         if (e.touches.length === 1) {
+                            const touch = e.touches[0];
+                            initialTouchY = touch.clientY;
+
                             longPressTimer = setTimeout(() => {
-                                const touch = e.touches[0];
-                                this.showMobileCrosshair(touch.clientX, touch.clientY);
-                            }, 500); // 500ms pro long press
+                                isCrosshairVisible = true;
+                                this.showMobileCrosshair(touch.clientX, touch.clientY - offsetY);
+                            }, 500);
                         }
                     }, { passive: false });
 
                     this.canvas.addEventListener('touchmove', (e) => {
-                        if (e.touches.length === 1 && this.mobileCrosshair.style.display === 'block') {
-                            e.preventDefault();
+                        if (e.touches.length === 1) {
                             const touch = e.touches[0];
-                            this.updateMobileCrosshair(touch.clientX, touch.clientY);
-                            isMoved = true;
+
+                            if (isCrosshairVisible) {
+                                e.preventDefault();
+                                // Přidat výpočet nové Y pozice s offsetem
+                                const newY = touch.clientY - offsetY;
+                                this.updateMobileCrosshair(touch.clientX, newY);
+                            } else {
+                                clearTimeout(longPressTimer);
+                            }
                         }
                     }, { passive: false });
 
                     this.canvas.addEventListener('touchend', () => {
                         clearTimeout(longPressTimer);
-                        if (!isMoved) {
-                            this.hideMobileCrosshair();
+                        if (isCrosshairVisible) {
+                            // Najít nejbližší bod a označit ho
+                            const rect = this.canvas.getBoundingClientRect();
+                            const crosshairX = parseFloat(this.mobileCrosshair.style.left) - rect.left;
+                            const crosshairY = parseFloat(this.mobileCrosshair.style.top) - rect.top;
+
+                            const nearestPoint = this.findNearestPoint(crosshairX, crosshairY);
+                            if (nearestPoint) {
+                                this.highlightPoint(nearestPoint.x, nearestPoint.z);
+                                const lineIndex = this.findLineByCoordinates(nearestPoint.x, nearestPoint.z);
+                                if (lineIndex >= 0) {
+                                    this.highlightLineAndPoint(lineIndex, nearestPoint);
+                                }
+                            }
                         }
-                        isMoved = false;
+                        this.hideMobileCrosshair();
+                        isCrosshairVisible = false;
                     });
                 }
             }
@@ -2686,6 +2723,12 @@
                 this.mobileCrosshair.style.display = 'block';
                 this.mobileTooltip.style.display = 'block';
                 this.updateMobileCrosshair(x, y);
+
+                // Přidat vizuální efekt při zobrazení
+                this.mobileCrosshair.style.transform = 'translate(-50%, -50%) scale(1.2)';
+                setTimeout(() => {
+                    this.mobileCrosshair.style.transform = 'translate(-50%, -50%) scale(1)';
+                }, 100);
             }
 
             hideMobileCrosshair() {
@@ -2698,7 +2741,6 @@
                 const x = clientX - rect.left;
                 const y = clientY - rect.top;
 
-                // Aktualizovat pozici křížku
                 this.mobileCrosshair.style.left = `${clientX}px`;
                 this.mobileCrosshair.style.top = `${clientY}px`;
 
@@ -2711,9 +2753,14 @@
                     this.mobileTooltip.textContent =
                         `X${this.formatNumber(nearestPoint.x)} Z${this.formatNumber(nearestPoint.z)}`;
 
-                    // Aktualizovat vybrané souřadnice
-                    selectedPosXElement.textContent = this.formatNumber(nearestPoint.x);
-                    selectedPosZElement.textContent = this.formatNumber(nearestPoint.z);
+                    // Zvýraznit nejbližší bod během pohybu křížku
+                    this.ctx.save();
+                    this.ctx.beginPath();
+                    this.ctx.arc(nearestPoint.screenX, nearestPoint.screenY, 6, 0, Math.PI * 2);
+                    this.ctx.strokeStyle = '#ff0000';
+                    this.ctx.lineWidth = 2;
+                    this.ctx.stroke();
+                    this.ctx.restore();
                 }
             }
 
