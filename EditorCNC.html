@@ -78,19 +78,11 @@
         /* Mobilní optimalizace */
         @media (max-width: 768px) {
             .simulator {
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                height: 45vh;
-                z-index: 100;
-                background: #fff;
+                height: 45vh; /* Zvětšen prostor pro simulátor */
             }
 
             .editor-container {
-                margin-top: 45vh;
-                height: 55vh;
-                position: relative;
+                height: 45vh; /* Upraveno pro lepší zobrazení */
             }
 
             .toolbar {
@@ -122,33 +114,10 @@
             }
 
             #editor {
-                font-size: 18px; /* Větší písmo pro mobilní zařízení */
-                line-height: 2em; /* Větší řádkování pro lepší čitelnost a klikání */
-                padding: 20px;
-                height: calc(100% - 40px); /* Výška mínus padding */
-                position: relative;
-                overflow-y: auto;
-                -webkit-overflow-scrolling: touch;
-                overscroll-behavior: contain;
-                inputmode: numeric;
-                pattern: "[0-9]*";
-                -webkit-appearance: none;
-            }
-
-            /* Přidat styl pro fixní pozici označeného řádku */
-            .editor-line-highlight {
-                position: sticky;
-                top: 40px; /* Druhá pozice od vrchu */
-                background-color: #e6f3ff;
-                z-index: 1;
-                padding: 8px 0;
-                margin: 4px 0;
-            }
-
-            /* Zvětšit mezeru mezi řádky pro lepší dotykové ovládání */
-            .editor-line {
-                min-height: 2em;
-                padding: 8px 0;
+                font-size: 16px; /* Větší písmo pro mobilní zařízení */
+                line-height: 1.4;
+                padding: 8px;
+                -webkit-tap-highlight-color: rgba(0,0,0,0);
             }
 
             /* Vylepšení scrollování pro touch zařízení */
@@ -2478,59 +2447,61 @@
             }
 
             highlightPoint(x, z) {
-                // Nejprve vyčistit předchozí zvýraznění
-                this.clearHighlight();
+                // Hledat bod s tolerancí kvůli zaokrouhlovacím chybám
+                this.highlightedPoint = this.points.find(point => {
+                    const dx = Math.abs(point.x - x);
+                    const dz = Math.abs(point.z - z);
+                    return dx < 0.001 && dz < 0.001; // tolerance 0.001mm
+                });
 
-                this.highlightedPoint = { x, z };
+                // Pokud není nalezen přesný bod, vytvoříme nový
+                if (!this.highlightedPoint) {
+                    this.highlightedPoint = { x, z };
+                }
 
+                // Přidat animační smyčku pro plynulou animaci
                 const animate = () => {
-                    if (!this.highlightedPoint) return;
+                    if (this.highlightedPoint) {
+                        const point = this.worldToScreen(this.highlightedPoint.x, this.highlightedPoint.z);
 
-                    const point = this.worldToScreen(this.highlightedPoint.x, this.highlightedPoint.z);
+                        this.ctx.save();
 
-                    this.ctx.save();
+                        // Vykreslení pevného bodu
+                        this.ctx.beginPath();
+                        this.ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
+                        this.ctx.fillStyle = '#ff0000';
+                        this.ctx.fill();
 
-                    // Vykreslení pevného bodu
-                    this.ctx.beginPath();
-                    this.ctx.arc(point.x, point.y, 4, 0, Math.PI * 2);
-                    this.ctx.fillStyle = '#ff0000';
-                    this.ctx.fill();
+                        // Pulzující kružnice
+                        const now = Date.now();
+                        const phase = (now % 1000) / 1000;
+                        const radius = 8 + Math.sin(phase * Math.PI * 2) * 4;
 
-                    // Pulzující kružnice
-                    const now = Date.now();
-                    const phase = (now % 1000) / 1000;
-                    const radius = 8 + Math.sin(phase * Math.PI * 2) * 4;
+                        this.ctx.beginPath();
+                        this.ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+                        this.ctx.strokeStyle = '#ff0000';
+                        this.ctx.lineWidth = 2;
+                        this.ctx.stroke();
 
-                    this.ctx.beginPath();
-                    this.ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
-                    this.ctx.strokeStyle = '#ff0000';
-                    this.ctx.lineWidth = 2;
-                    this.ctx.stroke();
+                        this.ctx.restore();
 
-                    this.ctx.restore();
-
-                    // Uložit referenci na animaci
-                    this.animationFrame = requestAnimationFrame(animate);
+                        // Pokračovat v animaci
+                        requestAnimationFrame(animate);
+                    }
                 };
 
-                // Spustit animaci
+                // Spustit animační smyčku
                 animate();
             }
 
             clearHighlight() {
-                // Zastavit všechny běžící animace
-                if (this.animationFrame) {
-                    cancelAnimationFrame(this.animationFrame);
-                    this.animationFrame = null;
-                }
-
                 this.highlightedPoint = null;
-
-                // Kompletní překreslení
-                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-                this.drawAxes();
+                // Přidat kontrolu na existenci this.lastMovements
                 if (this.lastMovements) {
                     this.drawPath(this.lastMovements);
+                } else {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    this.drawAxes();
                 }
             }
 
@@ -2544,10 +2515,11 @@
                 // Vymazat předchozí zvýraznění
                 this.clearHighlight();
 
+                // Najít bod pod myší s větší tolerancí
                 const hitPoint = this.points.find(point => {
                     const dx = mouseX - point.screenX;
                     const dy = mouseY - point.screenY;
-                    return Math.sqrt(dx * dx + dy * dy) < 8;
+                    return Math.sqrt(dx * dx + dy * dy) < 8; // Zvětšená tolerance
                 });
 
                 if (hitPoint) {
@@ -2558,17 +2530,17 @@
                 }
             }
 
+            // Přidat novou metodu pro zvýraznění řádku a bodu
             highlightLineAndPoint(lineIndex, point) {
                 // Nejprve vyčistit předchozí zvýraznění
                 this.clearHighlight();
 
-                // Odstranit předchozí šipky a třídy
-                const lines = editor.value.split('\n');
-                const cleanLines = lines.map(line => line.replace(/^→\s*/, ''));
+                // Odstranit předchozí šipky
+                const lines = editor.value.split('\n').map(line => line.replace(/^→\s*/, ''));
 
                 // Přidat šipku k vybranému řádku
-                cleanLines[lineIndex] = '→ ' + cleanLines[lineIndex];
-                editor.value = cleanLines.join('\n');
+                lines[lineIndex] = '→ ' + lines[lineIndex];
+                editor.value = lines.join('\n');
 
                 // Aktualizovat zobrazené souřadnice
                 selectedPosXElement.textContent = this.formatNumber(point.x);
@@ -2577,24 +2549,9 @@
                 // Zvýraznit bod
                 this.highlightPoint(point.x, point.z);
 
-                // Scrollovat k vybranému řádku a udržet ho na druhé pozici
+                // Scrollovat k vybranému řádku
                 const lineHeight = parseFloat(getComputedStyle(editor).lineHeight);
-                const viewportHeight = editor.clientHeight;
-                const targetPosition = lineHeight * (lineIndex - 1);
-
-                // Zajistit, aby označený řádek byl vždy viditelný a na druhé pozici
-                if (targetPosition < editor.scrollTop ||
-                    targetPosition > editor.scrollTop + viewportHeight - lineHeight * 3) {
-                    editor.scrollTop = Math.max(0, targetPosition);
-                }
-
-                // Přidat třídu pro zvýraznění řádku
-                const textLines = editor.value.split('\n');
-                const textareaContent = textLines.map((line, i) =>
-                    i === lineIndex ?
-                        `<div class="editor-line editor-line-highlight">${line}</div>` :
-                        `<div class="editor-line">${line}</div>`
-                ).join('');
+                editor.scrollTop = lineIndex * lineHeight;
 
                 // Překreslit
                 this.drawPath(this.lastMovements);
@@ -2784,15 +2741,6 @@
 
                     // Zvýraznit aktuální bod
                     this.simulator.highlightPoint(currentMove.toX, currentMove.toZ);
-
-                    // Synchronizovat editor s aktuálním pohybem
-                    const lineIndex = this.simulator.findLineByCoordinates(currentMove.toX, currentMove.toZ);
-                    if (lineIndex >= 0) {
-                        this.simulator.highlightLineAndPoint(lineIndex, {
-                            x: currentMove.toX,
-                            z: currentMove.toZ
-                        });
-                    }
                 }
             }
 
@@ -2931,51 +2879,6 @@
                         }
                     }, 100);
                     editor.addEventListener('input', debouncedSimulate);
-                }
-
-                // Přidat handler pro kontrolu zobrazení na mobilních zařízeních
-                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-                if (isMobile) {
-                    // Upravit rozložení pro mobilní zařízení
-                    document.querySelector('.simulator').style.height = '40vh';
-                    document.querySelector('.editor-container').style.height = '50vh';
-
-                    // Přidat handler pro zabránění automatickému scrollování při zobrazení klávesnice
-                    window.addEventListener('resize', () => {
-                        if (document.activeElement.tagName === 'TEXTAREA') {
-                            window.scrollTo(0, 0);
-                        }
-                    });
-                }
-
-                // Přidat handler pro mobilní zařízení
-                if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-                    const editor = document.getElementById('editor');
-
-                    // Nastavit editor pro numerickou klávesnici
-                    editor.setAttribute('inputmode', 'numeric');
-                    editor.setAttribute('pattern', '[0-9]*');
-
-                    // Upravit zobrazení při zobrazení klávesnice
-                    editor.addEventListener('focus', () => {
-                        setTimeout(() => {
-                            window.scrollTo(0, 0);
-                            window.simulator.resetView();
-                        }, 300);
-                    });
-
-                    // Přidat handler pro změnu velikosti okna
-                    let lastHeight = window.innerHeight;
-                    window.addEventListener('resize', () => {
-                        const newHeight = window.innerHeight;
-                        if (newHeight < lastHeight) {
-                            // Klávesnice se zobrazila - přepočítat zobrazení
-                            window.simulator.setupCanvas();
-                            window.simulator.simulate();
-                            window.simulator.resetView();
-                        }
-                        lastHeight = newHeight;
-                    });
                 }
             } catch (error) {
                 console.error('Chyba při inicializaci:', error);
