@@ -1607,11 +1607,11 @@
             parseCoordinates(line) {
                 const result = {
                     hasCoordinates: false,
-                    x: this.currentX,
-                    z: this.currentZ
+                    x: 0,
+                    z: 0,
+                    isAbsolute: this.absoluteMode
                 };
 
-                // Ignorovat prázdné řádky a komentáře
                 if (!line || line.trim().startsWith(';')) {
                     return result;
                 }
@@ -1620,46 +1620,40 @@
                     const cleanLine = line.trim().toUpperCase();
 
                     // Aktualizovat G90/G91 mód
-                    if (cleanLine.includes('G90')) this.absoluteMode = true;
-                    if (cleanLine.includes('G91')) this.absoluteMode = false;
+                    if (cleanLine.includes('G90')) {
+                        this.absoluteMode = true;
+                        result.isAbsolute = true;
+                    }
+                    if (cleanLine.includes('G91')) {
+                        this.absoluteMode = false;
+                        result.isAbsolute = false;
+                    }
 
-                    // Zpracovat parametrické souřadnice (X=R... Z=R...)
-                    const paramMatch = cleanLine.match(/[XZ]=R\d+[+-]?\d*\.?\d*/ig);
-                    if (paramMatch) {
-                        for (const coord of paramMatch) {
-                            const [axis, expr] = coord.split('=');
-                            const value = this.evaluateParameters(expr);
-                            if (axis === 'X') result.x = value;
-                            if (axis === 'Z') result.z = value;
-                            result.hasCoordinates = true;
+                    // Zpracovat souřadnice
+                    const xMatch = cleanLine.match(/X(-?\d*\.?\d+)/);
+                    const zMatch = cleanLine.match(/Z(-?\d*\.?\d+)/);
+
+                    if (xMatch || zMatch) {
+                        result.hasCoordinates = true;
+
+                        if (xMatch) {
+                            const x = parseFloat(xMatch[1]);
+                            result.x = this.absoluteMode ? x : (this.currentX + x);
+                        } else {
+                            result.x = this.currentX;
                         }
+
+                        if (zMatch) {
+                            const z = parseFloat(zMatch[1]);
+                            result.z = this.absoluteMode ? z : (this.currentZ + z);
+                        } else {
+                            result.z = this.currentZ;
+                        }
+
+                        // Aktualizovat aktuální pozici
+                        this.currentX = result.x;
+                        this.currentZ = result.z;
                     }
-
-                    // Zpracovat přímé souřadnice (X... Z...)
-                    const xMatch = cleanLine.match(/X(-?\d+\.?\d*)/);
-                    const zMatch = cleanLine.match(/Z(-?\d+\.?\d*)/);
-
-                    if (xMatch) {
-                        const x = Number(parseFloat(xMatch[1]).toFixed(3));
-                        result.x = this.absoluteMode ? x : this.currentX + x;
-                        result.hasCoordinates = true;
-                    }
-
-                    if (zMatch) {
-                        const z = Number(parseFloat(zMatch[1]).toFixed(3));
-                        result.z = this.absoluteMode ? z : this.currentZ + z;
-                        result.hasCoordinates = true;
-                    }
-
-                    // Logování nalezených souřadnic
-                    if (result.hasCoordinates) {
-                        console.log(`Nalezeny souřadnice v řádku "${line}":`, {
-                            X: result.x,
-                            Z: result.z,
-                            absolutní: this.absoluteMode
-                        });
-                    }
-
                 } catch (e) {
                     console.warn('Chyba při parsování souřadnic:', e);
                 }
@@ -2413,8 +2407,12 @@
 
             updateSelectedPosition(x, z) {
                 if (x !== null && z !== null) {
-                    selectedPosXElement.textContent = this.formatNumber(x);
-                    selectedPosZElement.textContent = this.formatNumber(z);
+                    // Převést relativní souřadnice na absolutní, pokud je potřeba
+                    const absoluteX = this.parser.absoluteMode ? x : (this.parser.currentX + x);
+                    const absoluteZ = this.parser.absoluteMode ? z : (this.parser.currentZ + z);
+
+                    selectedPosXElement.textContent = this.formatNumber(absoluteX);
+                    selectedPosZElement.textContent = this.formatNumber(absoluteZ);
                 }
             }
 
@@ -2501,7 +2499,6 @@
 
             highlightLineAndPoint(lineIndex, point) {
                 // Nejprve vyčistit předchozí zvýraznění
-                this.clearHighlight();
 
                 // Odstranit předchozí šipky a třídy
                 const lines = editor.value.split('\n');
@@ -2552,58 +2549,47 @@
                 }
             }
 
-            findLineByCoordinates(targetX, targetZ) {
-                // Projít všechny pohyby a najít ten, který končí na daných souřadnicích
-                let movements = [];
+            async findLineByCoordinates(targetX, targetZ) {
+                let currentX = 0;
+                let currentZ = 0;
+                let isAbsolute = true; // Výchozí G90 mód
                 const program = editor.value;
-
-                // Resetovat parser pro správné hodnoty
-                this.parser.reset();
-
                 const lines = program.split('\n');
+
+                // Projít všechny předchozí řádky a spočítat aktuální pozici
                 for (let i = 0; i < lines.length; i++) {
                     const line = lines[i].trim();
                     if (!line || line.startsWith(';')) continue;
 
-                    const coords = this.parser.parseCoordinates(line);
+                    // Kontrola G90/G91
+                    if (line.includes('G90')) {
+                        isAbsolute = true;
+                        continue;
+                    }
+                    if (line.includes('G91')) {
+                        isAbsolute = false;
+                        continue;
+                    }
+
+                    // Zpracování souřadnic
+                    const coords = await this.parser.parseCoordinates(line);
                     if (coords.hasCoordinates) {
-                        if (Math.abs(coords.x - targetX) < 0.001 &&
-                            Math.abs(coords.z - targetZ) < 0.001) {
-                            return i; // Vrátit index řádku
+                        if (isAbsolute) {
+                            currentX = coords.x;
+                            currentZ = coords.z;
+                        } else {
+                            currentX += coords.x;
+                            currentZ += coords.z;
                         }
-                        // Aktualizovat pozici parseru
-                        this.parser.currentX = coords.x;
-                        this.parser.currentZ = coords.z;
+
+                        // Kontrola shody s hledanou pozicí (s tolerancí)
+                        if (Math.abs(currentX - targetX) < 0.001 &&
+                            Math.abs(currentZ - targetZ) < 0.001) {
+                            return i;
+                        }
                     }
                 }
                 return -1;
-            }
-
-            highlightLineAndPoint(lineIndex, point) {
-                // Nejprve vyčistit předchozí zvýraznění
-                this.clearHighlight();
-
-                // Odstranit předchozí šipky
-                const lines = editor.value.split('\n');
-                const cleanLines = lines.map(line => line.replace(/^→\s*/, ''));
-
-                // Přidat šipku k vybranému řádku
-                cleanLines[lineIndex] = '→ ' + cleanLines[lineIndex];
-                editor.value = cleanLines.join('\n');
-
-                // Aktualizovat zobrazené souřadnice
-                selectedPosXElement.textContent = this.formatNumber(point.x);
-                selectedPosZElement.textContent = this.formatNumber(point.z);
-
-                // Zvýraznit bod
-                this.highlightPoint(point.x, point.z);
-
-                // Scrollovat k vybranému řádku
-                const lineHeight = parseFloat(getComputedStyle(editor).lineHeight);
-                editor.scrollTop = lineIndex * lineHeight;
-
-                // Překreslit
-                this.drawPath(this.lastMovements);
             }
 
             async simulateToLine(lineIndex) {
@@ -2725,45 +2711,97 @@
                 this.stop();
             }
 
-            drawMovements(upToIndex) {
-                // Ověřit existenci elementů před jejich použitím
+            async drawMovements(upToIndex) {
                 if (!this.elements.posX || !this.elements.posZ) return;
 
-                // Vyčistit canvas a vykreslit osy
-                this.simulator.ctx.clearRect(0, 0, this.simulator.canvas.width, this.simulator.canvas.height);
-                this.simulator.drawAxes();
-
-                // Připravit všechny pohyby až do aktuálního indexu
                 const currentMovements = this.movements.slice(0, upToIndex + 1);
 
                 if (currentMovements.length > 0) {
-                    // Vykreslit všechny pohyby najednou
+                    // Vykreslit pohyby
                     this.simulator.drawPath(currentMovements);
 
-                    // Získat aktuální pohyb pro aktualizaci pozice
                     const currentMove = currentMovements[currentMovements.length - 1];
 
-                    // Aktualizovat zobrazené souřadnice
+                    // Aktualizovat pozice
                     this.elements.posX.textContent = this.simulator.formatNumber(currentMove.toX);
                     this.elements.posZ.textContent = this.simulator.formatNumber(currentMove.toZ);
 
-                    // Zvýraznit aktuální bod
-                    this.simulator.highlightPoint(currentMove.toX, currentMove.toZ);
+                    // Najít aktuální řádek v programu
+                    const program = editor.value;
+                    const lines = program.split('\n');
 
-                    // Zvýraznit odpovídající řádek v editoru
-                    const lineIndex = this.simulator.findLineByCoordinates(currentMove.toX, currentMove.toZ);
-                    if (lineIndex >= 0) {
-                        // Označit řádek v editoru, ale nepřekreslovat dráhy
-                        const lines = editor.value.split('\n');
-                        const cleanLines = lines.map(line => line.replace(/^→\s*/, ''));
-                        cleanLines[lineIndex] = '→ ' + cleanLines[lineIndex];
-                        editor.value = cleanLines.join('\n');
+                    // Reset všech označení
+                    const cleanLines = lines.map(line => line.replace(/^→\s*/, ''));
 
-                        // Scrollovat k řádku
-                        const lineHeight = parseFloat(getComputedStyle(editor).lineHeight);
-                        editor.scrollTop = Math.max(0, (lineIndex - 1) * lineHeight);
+                    // Najít index řádku pro aktuální pohyb
+                    for (let i = 0; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        if (!line || line.startsWith(';')) continue;
+
+                        const coords = await this.simulator.parser.parseCoordinates(line);
+                        if (coords.hasCoordinates &&
+                            Math.abs(coords.x - currentMove.toX) < 0.001 &&
+                            Math.abs(coords.z - currentMove.toZ) < 0.001) {
+
+                            // Označit aktuální řádek
+                            cleanLines[i] = '→ ' + cleanLines[i];
+
+                            // Aktualizovat editor
+                            editor.value = cleanLines.join('\n');
+
+                            // Scrollovat k označenému řádku
+                            const lineHeight = parseFloat(getComputedStyle(editor).lineHeight);
+                            const targetScroll = Math.max(0, (i - 2) * lineHeight);
+                            editor.scrollTop = targetScroll;
+
+                            // Zvýraznit aktuální bod v simulaci
+                            this.simulator.highlightPoint(currentMove.toX, currentMove.toZ);
+
+                            break;
+                        }
                     }
                 }
+            }
+
+            async findLineForMovement(movement, lines) {
+                let currentX = 0;
+                let currentZ = 0;
+                let isAbsolute = true;
+
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line || line.startsWith(';')) continue;
+
+                    // Kontrola G90/G91
+                    if (line.includes('G90')) {
+                        isAbsolute = true;
+                        continue;
+                    }
+                    if (line.includes('G91')) {
+                        isAbsolute = false;
+                        continue;
+                    }
+
+                    const coords = await this.simulator.parser.parseCoordinates(line);
+                    if (coords.hasCoordinates) {
+                        const x = coords.x;
+                        const z = coords.z;
+
+                        if (Math.abs(x - movement.toX) < 0.001 &&
+                            Math.abs(z - movement.toZ) < 0.001) {
+                            return i;
+                        }
+
+                        if (isAbsolute) {
+                            currentX = x;
+                            currentZ = z;
+                        } else {
+                            currentX += x;
+                            currentZ += z;
+                        }
+                    }
+                }
+                return -1;
             }
 
             playNext() {
@@ -2772,18 +2810,16 @@
                     return;
                 }
 
-                // Vykreslit aktuální pohyb včetně zvýraznění
-                requestAnimationFrame(() => {
-                    this.drawMovements(this.currentIndex);
+                // Použít requestAnimationFrame pro plynulejší animaci
+                requestAnimationFrame(async () => {
+                    await this.drawMovements(this.currentIndex);
                     this.updateCurrentLine();
+                    this.currentIndex++;
+
+                    // Naplánovat další frame
+                    const delay = this.calculateDelay();
+                    this.playTimer = setTimeout(() => this.playNext(), delay);
                 });
-
-                // Zvýšit index až po vykreslení
-                this.currentIndex++;
-
-                // Naplánovat další pohyb
-                const delay = this.calculateDelay();
-                this.playTimer = setTimeout(() => this.playNext(), delay);
             }
 
             calculateDelay() {
@@ -2941,44 +2977,49 @@
             const clickedLineIndex = editor.value.substr(0, cursorPosition).split('\n').length - 1;
             if (clickedLineIndex < 0) return;
 
-            const line = lines[clickedLineIndex];
-            if (!line) return;
-
             // Nejprve vyčistit všechna předchozí zvýraznění
             window.simulator.clearAllHighlights();
 
-            // Použít novou metodu parseCoordinates
-            const coords = window.simulator.parser.parseCoordinates(line);
-            if (coords.hasCoordinates) {
-                window.simulator.highlightLineAndPoint(clickedLineIndex, {
-                    x: coords.x,
-                    z: coords.z
-                });
+            try {
+                // Použít stejnou logiku jako v přehrávači - parsovat program po tento řádek
+                const programUpToLine = lines.slice(0, clickedLineIndex + 1).join('\n');
+                const movements = await window.simulator.parser.parseProgram(programUpToLine);
 
-                // Přehrát pohyby až po vybraný bod
-                if (window.simulator.player) {
-                    // Najít index pohybu odpovídající vybranému řádku
-                    const movements = await window.simulator.parser.parseProgram(editor.value);
-                    const targetPoint = { x: coords.x, z: coords.z };
+                if (movements.length > 0) {
+                    // Získat poslední pohyb - obsahuje aktuální pozici
+                    const lastMove = movements[movements.length - 1];
 
-                    // Najít index posledního pohybu před nebo na vybraném řádku
-                    let moveIndex = movements.findIndex(move =>
-                        Math.abs(move.toX - targetPoint.x) < 0.001 &&
-                        Math.abs(move.toZ - targetPoint.z) < 0.001
-                    );
+                    // Aktualizovat zobrazení a zvýraznění
+                    window.simulator.highlightLineAndPoint(clickedLineIndex, {
+                        x: lastMove.toX,
+                        z: lastMove.toZ
+                    });
 
-                    if (moveIndex >= 0) {
-                        // Nastavit index v přehrávači
-                        window.simulator.player.currentIndex = moveIndex + 1;
-                        // Vykreslit všechny pohyby až po tento index
-                        window.simulator.player.drawMovements(moveIndex);
-                        // Aktualizovat počítadlo řádků
-                        window.simulator.player.updateCurrentLine();
+                    // Přehrát pohyby až po tento bod
+                    if (window.simulator.player) {
+                        // Najít index v celém programu
+                        const allMovements = await window.simulator.parser.parseProgram(editor.value);
+                        const moveIndex = movements.length - 1;
+
+                        if (moveIndex >= 0) {
+                            // Synchronizovat přehrávač
+                            window.simulator.player.currentIndex = moveIndex + 1;
+                            await window.simulator.player.drawMovements(moveIndex);
+                            window.simulator.player.updateCurrentLine();
+                        }
                     }
-                }
 
-                // Zobrazit celou simulaci do označeného bodu
-                await window.simulator.simulateToLine(clickedLineIndex);
+                    // Aktualizovat simulaci
+                    await window.simulator.simulateToLine(clickedLineIndex);
+
+                    // Aktualizovat pozici v zobrazení
+                    posXElement.textContent = window.simulator.formatNumber(lastMove.toX);
+                    posZElement.textContent = window.simulator.formatNumber(lastMove.toZ);
+                    selectedPosXElement.textContent = window.simulator.formatNumber(lastMove.toX);
+                    selectedPosZElement.textContent = window.simulator.formatNumber(lastMove.toZ);
+                }
+            } catch (error) {
+                console.error('Chyba při zpracování řádku:', error);
             }
         });
 
